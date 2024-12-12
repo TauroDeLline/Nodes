@@ -1,58 +1,51 @@
-# Elixir Validator - Инструкция
+Есть и майннет, и тестнет - поставлю сейчас обе. В тестнете можно клеймить тестовые токены и стейкать в себя.
+Майннет - elixir.xyz/validators
+Тестнет - testnet-3.elixir.xyz/validators/search
+Кран - https://cloud.google.com/application/web3/faucet/ethereum/sepolia
 
-**Запуск ноды:**  
+Elixir Validator - Инструкция
+
+Запуск ноды:
 Нода была запущена с помощью:
-\`\`\`bash
 docker run -d --env-file validator.env --name elixir --restart unless-stopped elixirprotocol/validator:latest
-\`\`\`
 
-**Проверка логов с хоста:**  
-\`\`\`bash
+
+Проверка логов с хоста: 
 docker logs -f elixir
-\`\`\`
-Нажмите \`Ctrl+C\` для выхода из просмотра логов (нода продолжит работать).
+Нажмите `Ctrl+C` для выхода из просмотра логов (нода продолжит работать).
 
-**Вход в контейнер:**  
-\`\`\`bash
+Вход в контейнер:
 docker exec -it elixir bash
-\`\`\`
 
-**Перезапуск контейнера при сбоях и рестартах сервера:**  
-Опция \`--restart unless-stopped\` гарантирует, что контейнер автоматически запустится при перезагрузке сервера или если валидатор выйдет из строя.
 
-**Обновление валидатора:**  
+Перезапуск контейнера при сбоях и рестартах сервера:
+Опция `--restart unless-stopped` гарантирует, что контейнер автоматически запустится при перезагрузке сервера или если валидатор выйдет из строя.
+
+Обновление валидатора:
 Когда выйдет новая версия валидатора:
-\`\`\`bash
 docker kill elixir
 docker rm elixir
 docker pull elixirprotocol/validator:latest
 # И снова запустить контейнер командой выше
-\`\`\`
 
-# Elixir Validator (Testnet) - Инструкция
 
-**Запуск ноды (тестнет):**  
-```bash
+
+Elixir Validator (Testnet) - Инструкция
+
+Запуск ноды (тестнет):
 docker run -d --env-file /path/to/validator-testnet.env --name elixir-testnet --restart unless-stopped elixirprotocol/validator:testnet
-Проверка логов с хоста:
 
-bash
-Копировать код
+Проверка логов с хоста:
 docker logs -f elixir-testnet
 Нажмите Ctrl+C для выхода из просмотра логов (нода продолжит работать).
 
 Вход в контейнер:
-
-bash
-Копировать код
 docker exec -it elixir-testnet bash
+
 Перезапуск контейнера при сбоях и рестартах сервера:
 Опция --restart unless-stopped гарантирует, что контейнер автоматически запустится при перезагрузке сервера или сбоях.
 
 Обновление валидатора (тестнет):
-
-bash
-Копировать код
 docker kill elixir-testnet
 docker rm elixir-testnet
 docker pull elixirprotocol/validator:testnet
