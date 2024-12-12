@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -e
+
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+echo -e "${GREEN}Добро пожаловать в установку Elixir Validator (Testnet)!${NC}"
+
+# Запрашиваем необходимые переменные
+read -p "Введите STRATEGY_EXECUTOR_DISPLAY_NAME (имя для отображения в сети тестнета): " STRATEGY_EXECUTOR_DISPLAY_NAME
+read -p "Введите STRATEGY_EXECUTOR_BENEFICIARY (адрес для получения наград): " STRATEGY_EXECUTOR_BENEFICIARY
+read -p "Введите SIGNER_PRIVATE_KEY (приватный ключ без '0x'): " SIGNER_PRIVATE_KEY
+
+if [ -z "$STRATEGY_EXECUTOR_DISPLAY_NAME" ] || [ -z "$STRATEGY_EXECUTOR_BENEFICIARY" ] || [ -z "$SIGNER_PRIVATE_KEY" ]; then
+    echo "Все поля должны быть заполнены. Запустите скрипт заново."
+    exit 1
+fi
+
+# Создаём validator.env для тестнета
+cat <<EOF > validator-testnet.env
+STRATEGY_EXECUTOR_DISPLAY_NAME=$STRATEGY_EXECUTOR_DISPLAY_NAME
+STRATEGY_EXECUTOR_BENEFICIARY=$STRATEGY_EXECUTOR_BENEFICIARY
+SIGNER_PRIVATE_KEY=$SIGNER_PRIVATE_KEY
+EOF
+
+echo -e "${GREEN}Файл validator-testnet.env создан!${NC}"
+
+# Скачиваем образ тестнета
+echo -e "${GREEN}Скачиваем образ elixirprotocol/validator:testnet...${NC}"
+docker pull elixirprotocol/validator:testnet
+
+# Останавливаем и удаляем предыдущий контейнер тестнета, если существует
+if docker ps -a --format '{{.Names}}' | grep -q '^elixir-testnet$'; then
+    echo -e "${GREEN}Обнаружен существующий контейнер 'elixir-testnet', удаляем...${NC}"
+    docker kill elixir-testnet || true
+    docker rm elixir-testnet || true
+fi
+
+# Запускаем контейнер тестнета
+echo -e "${GREEN}Запускаем контейнер 'elixir-testnet' с параметром --restart unless-stopped...${NC}"
+docker run -d \
+  --env-file validator-testnet.env \
+  --name elixir-testnet \
+  --restart unless-stopped \
+  elixirprotocol/validator:testnet
+
+echo -e "${GREEN}Контейнер 'elixir-testnet' успешно запущен!${NC}"
+echo -e "${GREEN}Открываем живой лог (нажмите Ctrl+C для выхода)...${NC}"
+
+# Переходим к просмотру логов
+docker logs -f elixir-testnet
