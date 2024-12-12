@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -e
+
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+echo -e "${GREEN}Добро пожаловать в установку Elixir Validator!${NC}"
+
+# Запрашиваем необходимые переменные
+read -p "Введите STRATEGY_EXECUTOR_DISPLAY_NAME (имя для отображения в сети): " STRATEGY_EXECUTOR_DISPLAY_NAME
+read -p "Введите STRATEGY_EXECUTOR_BENEFICIARY (адрес для получения наград): " STRATEGY_EXECUTOR_BENEFICIARY
+read -p "Введите SIGNER_PRIVATE_KEY (приватный ключ без '0x'): " SIGNER_PRIVATE_KEY
+
+if [ -z "$STRATEGY_EXECUTOR_DISPLAY_NAME" ] || [ -z "$STRATEGY_EXECUTOR_BENEFICIARY" ] || [ -z "$SIGNER_PRIVATE_KEY" ]; then
+    echo "Все поля должны быть заполнены. Запустите скрипт заново."
+    exit 1
+fi
+
+# Создаём validator.env
+cat <<EOF > validator.env
+STRATEGY_EXECUTOR_DISPLAY_NAME=$STRATEGY_EXECUTOR_DISPLAY_NAME
+STRATEGY_EXECUTOR_BENEFICIARY=$STRATEGY_EXECUTOR_BENEFICIARY
+SIGNER_PRIVATE_KEY=$SIGNER_PRIVATE_KEY
+EOF
+
+echo -e "${GREEN}Файл validator.env создан!${NC}"
+
+# Скачиваем образ
+echo -e "${GREEN}Скачиваем образ elixirprotocol/validator...${NC}"
+docker pull elixirprotocol/validator:latest
+
+# Останавливаем и удаляем предыдущий контейнер, если существует
+if docker ps -a --format '{{.Names}}' | grep -q '^elixir$'; then
+    echo -e "${GREEN}Обнаружен существующий контейнер 'elixir', удаляем...${NC}"
+    docker kill elixir || true
+    docker rm elixir || true
+fi
+
+# Запускаем контейнер согласно документации
+echo -e "${GREEN}Запускаем контейнер 'elixir' с параметром --restart unless-stopped...${NC}"
+docker run -d \
+  --env-file validator.env \
+  --name elixir \
+  --restart unless-stopped \
+  elixirprotocol/validator:latest
+
+echo -e "${GREEN}Контейнер 'elixir' успешно запущен!${NC}"
