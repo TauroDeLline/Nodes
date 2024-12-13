@@ -36,7 +36,7 @@ EOF
 cat <<EOF > docker-compose.yml
 version: '3.8'
 services:
-  $CONTAINER_NAME:
+  rivalz_service:
     build: .
     container_name: $CONTAINER_NAME
     restart: always
@@ -66,3 +66,6 @@ echo -e "Контейнер запущен. Для просмотра логов
 echo -e "Для входа в контейнер выполните команду:\n  docker exec -it $CONTAINER_NAME bash"
 
 echo -e "Для проверки логов внутри контейнера выполните команду:\n  tail -f /app/logs/node.log"
+
+# Завершающее сообщение
+echo -e "Скрипт завершён. Контейнер с именем $CONTAINER_NAME успешно запущен."
