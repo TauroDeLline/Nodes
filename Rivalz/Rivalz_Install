@@ -29,7 +29,7 @@ WORKDIR /app
 ENV PS1="[$CONTAINER_NAME] \w\$ "
 
 # Команда запуска ноды
-CMD ["sh", "-c", "rivalz run \"$WALLET_ADDRESS\" \"$DISK_SIZE\""]
+CMD ["sh", "-c", "rivalz run"]
 EOF
 
 # Создаем docker-compose.yml
@@ -61,12 +61,8 @@ fi
 docker-compose up -d --build
 
 # Показать логи контейнера
-echo "\nКонтейнер запущен. Для просмотра логов в реальном времени выполните команду:\n"
-echo "docker logs -f $CONTAINER_NAME"
+echo -e "Контейнер запущен. Для просмотра логов в реальном времени выполните команду:\n  docker logs -f $CONTAINER_NAME"
 
-echo "\nДля входа в контейнер выполните команду:\n"
-echo "docker exec -it $CONTAINER_NAME bash"
+echo -e "Для входа в контейнер выполните команду:\n  docker exec -it $CONTAINER_NAME bash"
 
-echo "\nДля проверки логов внутри контейнера выполните команду:\n"
-echo "tail -f /app/logs/node.log"
-
+echo -e "Для проверки логов внутри контейнера выполните команду:\n  tail -f /app/logs/node.log"
