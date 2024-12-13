@@ -1,0 +1,204 @@
+#!/bin/bash
+
+# Цвета текста
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+RED='\033[0;31m'
+NC='\033[0m' # Сброс цвета
+
+# Проверка наличия Docker и Docker Compose
+if ! command -v docker &> /dev/null; then
+    echo -e "${RED}Ошибка: Docker не установлен.${NC}"
+    exit 1
+fi
+
+if ! docker compose version &> /dev/null; then
+    echo -e "${YELLOW}Docker Compose не найден. Устанавливаем...${NC}"
+    sudo apt update && sudo apt install -y docker-compose-plugin
+    if ! docker compose version &> /dev/null; then
+        echo -e "${RED}Ошибка: Не удалось установить Docker Compose.${NC}"
+        exit 1
+    fi
+fi
+
+# Ввод переменных от пользователя
+read -p "Введите приватный ключ (оставьте пустым для генерации нового) (POPM_BTC_PRIVKEY): " PRIV_KEY
+read -p "Укажите желаемый размер комиссии (минимум 50) (POPM_STATIC_FEE): " FEE
+
+# Проверка минимального значения комиссии
+if [ "$FEE" -lt 50 ]; then
+    echo -e "${RED}Ошибка: комиссия должна быть не меньше 50!${NC}"
+    exit 1
+fi
+
+# Прямая ссылка на бинарник
+BINARY_URL="https://github.com/hemilabs/heminetwork/releases/download/v0.8.0/heminetwork_v0.8.0_linux_amd64.tar.gz"
+
+# Если приватный ключ не указан, создаем новый внутри контейнера
+if [ -z "$PRIV_KEY" ]; then
+    echo -e "${YELLOW}Приватный ключ не указан. Генерация нового ключа...${NC}"
+
+    # Подготовка Dockerfile для генерации ключа
+    cat <<EOT > Dockerfile
+# Используем базовый образ
+FROM ubuntu:22.04
+
+# Устанавливаем необходимые пакеты
+RUN apt-get update && apt-get install -y \
+    wget tar bash jq && \
+    rm -rf /var/lib/apt/lists/*
+
+# Задаем рабочую директорию
+WORKDIR /app
+
+# Загружаем бинарный файл Hemi для генерации ключей
+RUN wget -O heminetwork_linux_amd64.tar.gz "$BINARY_URL" && \
+    tar --strip-components=1 -xzvf heminetwork_linux_amd64.tar.gz && \
+    rm heminetwork_linux_amd64.tar.gz
+
+# Устанавливаем пользовательский PS1 для bash
+ENV PS1="[Hemi] \w\$ "
+
+# Команда для генерации ключа
+CMD ["/app/keygen", "-secp256k1", "-json", "-net=testnet"]
+EOT
+
+    # Строим временный контейнер для генерации ключа
+    docker build -t hemi-keygen .
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Ошибка: не удалось построить контейнер для генерации ключа.${NC}"
+        exit 1
+    fi
+
+    # Запускаем контейнер для генерации ключа и сохраняем результат
+    docker run --rm hemi-keygen > popm-address.json
+
+    if [ ! -f "popm-address.json" ]; then
+        echo -e "${RED}Ошибка: файл popm-address.json не создан.${NC}"
+        exit 1
+    fi
+
+    PRIV_KEY=$(jq -r '.private_key' popm-address.json)
+    PUBKEY_HASH=$(jq -r '.pubkey_hash' popm-address.json)
+
+    echo -e "${GREEN}Новый ключ сгенерирован!${NC}"
+    echo -e "${YELLOW}Ваш pubkey_hash (BTC адрес): $PUBKEY_HASH${NC}"
+    echo -e "${YELLOW}Ваш приватный ключ: $PRIV_KEY${NC}"
+    echo -e "${YELLOW}Сохраните файл popm-address.json в текущей папке для дальнейшего использования.${NC}"
+else
+    echo -e "${GREEN}Используется указанный приватный ключ.${NC}"
+fi
+
+# Создаем .env-файл для переменных окружения
+cat <<EOT > .env
+POPM_BTC_PRIVKEY=$PRIV_KEY
+POPM_STATIC_FEE=$FEE
+POPM_BFG_URL=wss://testnet.rpc.hemi.network/v1/ws/public
+EOT
+
+# Создаем Dockerfile
+cat <<EOT > Dockerfile
+# Используем базовый образ
+FROM ubuntu:22.04
+
+# Устанавливаем необходимые пакеты
+RUN apt-get update && apt-get install -y \
+    wget tar bash jq && \
+    rm -rf /var/lib/apt/lists/*
+
+# Задаем рабочую директорию
+WORKDIR /app
+
+# Загружаем и устанавливаем бинарный файл Hemi
+RUN wget -O heminetwork_linux_amd64.tar.gz "$BINARY_URL" && \
+    tar --strip-components=1 -xzvf heminetwork_linux_amd64.tar.gz && \
+    rm heminetwork_linux_amd64.tar.gz
+
+# Устанавливаем пользовательский PS1 для bash
+ENV PS1="[Hemi] \w\$ "
+
+# Определяем команду запуска
+CMD ["/app/popmd"]
+EOT
+
+# Создаем docker-compose.yml
+cat <<EOT > docker-compose.yml
+version: '3.8'
+
+services:
+  hemi:
+    build: .
+    container_name: Hemi
+    restart: always
+    env_file:
+      - .env
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+EOT
+
+# Функция обновления контейнера
+update_container() {
+    echo -e "${YELLOW}Обновляем контейнер Hemi...${NC}"
+    docker compose down
+
+    # Обновляем Dockerfile с прямой ссылкой
+    sed -i "s|https://github.com/hemilabs/heminetwork/releases/download/.*/heminetwork_linux_amd64.tar.gz|$BINARY_URL|" Dockerfile
+
+    # Пересобираем и перезапускаем контейнер
+    docker compose up -d --build
+    echo -e "${GREEN}Контейнер успешно обновлен!${NC}"
+}
+
+# Функция изменения комиссии
+update_fee() {
+    echo -e "${YELLOW}Обновляем значение комиссии...${NC}"
+    read -p "Введите новое значение комиссии (минимум 50): " NEW_FEE
+    if [ "$NEW_FEE" -lt 50 ]; then
+        echo -e "${RED}Ошибка: комиссия должна быть не меньше 50!${NC}"
+        exit 1
+    fi
+    sed -i "s|POPM_STATIC_FEE=.*|POPM_STATIC_FEE=$NEW_FEE|" .env
+    docker compose restart Hemi
+    echo -e "${GREEN}Комиссия успешно обновлена!${NC}"
+}
+
+# Функция установки контейнера
+install_container() {
+    echo -e "${YELLOW}Устанавливаем контейнер Hemi...${NC}"
+    docker compose up -d --build
+    echo -e "${GREEN}Контейнер успешно установлен!${NC}"
+}
+
+# Меню выбора действия
+echo -e "${YELLOW}Выберите действие:${NC}"
+echo "1) Установить контейнер"
+echo "2) Обновить контейнер до последней версии"
+echo "3) Обновить комиссию"
+read -p "Введите номер действия: " ACTION
+
+case $ACTION in
+    1)
+        install_container
+        ;;
+    2)
+        update_container
+        ;;
+    3)
+        update_fee
+        ;;
+    *)
+        echo -e "${RED}Ошибка: неверный выбор действия!${NC}"
+        ;;
+esac
+
+# Проверяем статус контейнера
+if [ $(docker ps -q -f name=Hemi | wc -l) -gt 0 ]; then
+    echo -e "${GREEN}Контейнер 'Hemi' успешно запущен!${NC}"
+    echo -e "${YELLOW}Используйте команду 'docker logs -f Hemi' для просмотра логов.${NC}"
+else
+    echo -e "${RED}Ошибка: Контейнер 'Hemi' не запущен.${NC}"
+    exit 1
+fi
