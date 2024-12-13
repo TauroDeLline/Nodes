@@ -3,6 +3,14 @@
 ## Описание
 Этот скрипт предназначен для автоматизированного развертывания ноды Hemi в контейнере Docker. Он поддерживает генерацию ключей, установку, обновление, изменение комиссии и управление контейнером через `docker compose`.
 
+
+## Запуск
+
+   ```bash
+   wget -O Hemi_Install https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Hemi/Hemi_Install && chmod +x Hemi_Install && ./Hemi_Install
+   ```
+
+
 ## Основные функции
 1. **Установка Docker и Docker Compose**: Проверяется наличие Docker и `docker compose`. При необходимости они устанавливаются автоматически.
 2. **Генерация или ввод ключа**:
@@ -15,13 +23,6 @@
    - Установка контейнера.
    - Обновление контейнера с использованием новой версии бинарника.
    - Изменение комиссии без перезапуска контейнера.
-
-## Запуск
-
-   ```bash
-   wget -O Hemi_Install https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Hemi/Hemi_Install && chmod +x Hemi_Install && ./Hemi_Install
-   ```
-
 
 ### Действия
 При запуске скрипта вы можете выбрать одно из действий:
