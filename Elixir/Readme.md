@@ -3,7 +3,8 @@
 
 
 # Скачивание, разрешение и запуск:
-```wget -O Elixir_Install https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Elixir/Elixir_Install && chmod +x Elixir_Install && ./Elixir_Install```
+
+`wget -O Elixir_Install https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Elixir/Elixir_Install && chmod +x Elixir_Install && ./Elixir_Install`
 
 # Elixir Validator - Инструкция
 
