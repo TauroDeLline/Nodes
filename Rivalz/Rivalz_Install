@@ -28,8 +28,8 @@ WORKDIR /app
 # Устанавливаем переменную окружения для приглашения PS1
 ENV PS1="[$CONTAINER_NAME] \w\$ "
 
-# Команда запуска ноды с автоматическим вводом данных
-CMD ["sh", "-c", "echo -e '$WALLET_ADDRESS\n\n$DISK_SIZE' | rivalz run"]
+# Команда запуска ноды с автоматизацией ввода данных
+CMD ["sh", "-c", "echo -e '$WALLET_ADDRESS\\n\\n$DISK_SIZE\\n' | rivalz run > /app/logs/node.log 2>&1"]
 EOF
 
 # Создаем docker-compose.yml
@@ -61,11 +61,18 @@ fi
 docker-compose up -d --build
 
 # Показать логи контейнера
-echo -e "Контейнер запущен. Для просмотра логов в реальном времени выполните команду:\n  docker logs -f $CONTAINER_NAME"
+sleep 5
 
-echo -e "Для входа в контейнер выполните команду:\n  docker exec -it $CONTAINER_NAME bash"
+# Удаление повторяющихся логов и вывод последних данных
+docker logs $CONTAINER_NAME | uniq > ./logs/latest.log
+echo -e "Логи контейнера обновлены. Для просмотра выполните команду:
+  tail -f ./logs/latest.log"
 
-echo -e "Для проверки логов внутри контейнера выполните команду:\n  tail -f /app/logs/node.log"
+echo -e "Для входа в контейнер выполните команду:
+  docker exec -it $CONTAINER_NAME bash"
+
+echo -e "Для проверки логов внутри контейнера выполните команду:
+  tail -f /app/logs/node.log"
 
 # Завершающее сообщение
 echo -e "Скрипт завершён. Контейнер с именем $CONTAINER_NAME успешно запущен."
