@@ -1,20 +1,27 @@
 Есть и майннет, и тестнет. Нет смысла ставить тест, только майннет
-Майннет - ```elixir.xyz/validators```
+Майннет - `elixir.xyz/validators`
 
 
 # Скачивание, разрешение и запуск:
 
-`wget -O Elixir_Install https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Elixir/Elixir_Install && chmod +x Elixir_Install && ./Elixir_Install`
+``` bash
+wget -O Elixir_Install https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Elixir/Elixir_Install && chmod +x Elixir_Install && ./Elixir_Install
+```
 
 # Elixir Validator - Инструкция
 
 ## Запуск ноды:
 
-```docker run -d --env-file validator.env --name elixir --restart unless-stopped elixirprotocol/validator:latest```
+``` bash
+docker run -d --env-file validator.env --name elixir --restart unless-stopped elixirprotocol/validator:latest
+```
 
 ## Проверка логов с хоста: 
 
-```docker logs -f elixir```
+``` bash
+docker logs -f elixir
+```
+
 Нажмите `Ctrl+C` для выхода из просмотра логов (нода продолжит работать).
 
 ## Вход в контейнер:
