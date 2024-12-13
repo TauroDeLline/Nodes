@@ -1,3 +1,6 @@
+wget https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Cysic/Cysic_Install && chmod +x Cysic_Install && ./Cysic_Install
+
+
 # Установка и запуск ноды Cysic
 
 Этот репозиторий содержит скрипт для автоматизированной установки и запуска ноды Cysic в Docker-контейнере.
