@@ -13,11 +13,8 @@
 
 Для установки и запуска скрипта выполните:
 
-wget https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Cysic/Cysic_Install.sh && chmod +x Cysic_Install.sh && ./Cysic_Install.sh
+wget https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Cysic/Cysic_Install && chmod +x Cysic_Install && ./Cysic_Install
 
-Или:
-
-curl -O https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Cysic/Cysic_Install.sh && chmod +x Cysic_Install.sh && ./Cysic_Install.sh
 
 ## Ввод данных при запуске
 
