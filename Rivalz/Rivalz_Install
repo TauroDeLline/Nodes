@@ -20,7 +20,7 @@ cat <<EOF > Dockerfile
 FROM node:18
 
 # Установка зависимостей
-RUN npm install -g rivalz-node-cli
+RUN apt-get update && apt-get install -y expect && npm install -g rivalz-node-cli
 
 # Создаем рабочую директорию
 WORKDIR /app
@@ -28,8 +28,23 @@ WORKDIR /app
 # Устанавливаем переменную окружения для приглашения PS1
 ENV PS1="[$CONTAINER_NAME] \w\$ "
 
-# Команда запуска ноды с автоматизацией ввода данных
-CMD ["sh", "-c", "echo -e '$WALLET_ADDRESS\\n\\n$DISK_SIZE\\n' | rivalz run > /app/logs/node.log 2>&1"]
+# Команда запуска ноды с использованием expect
+COPY start_node.sh /usr/local/bin/start_node.sh
+RUN chmod +x /usr/local/bin/start_node.sh
+CMD ["/usr/local/bin/start_node.sh"]
+EOF
+
+# Создаем скрипт для автоматизации ввода
+cat <<EOF > start_node.sh
+#!/usr/bin/env expect
+spawn rivalz run
+expect "? Enter wallet address (EVM):"
+send "$WALLET_ADDRESS\r"
+expect "?"
+send "\r"
+expect "?"
+send "$DISK_SIZE\r"
+interact
 EOF
 
 # Создаем docker-compose.yml
