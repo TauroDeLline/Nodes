@@ -28,8 +28,8 @@ WORKDIR /app
 # Устанавливаем переменную окружения для приглашения PS1
 ENV PS1="[$CONTAINER_NAME] \w\$ "
 
-# Команда запуска ноды
-CMD ["sh", "-c", "rivalz run"]
+# Команда запуска ноды с автоматическим вводом данных
+CMD ["sh", "-c", "echo -e '$WALLET_ADDRESS\n\n$DISK_SIZE' | rivalz run"]
 EOF
 
 # Создаем docker-compose.yml
