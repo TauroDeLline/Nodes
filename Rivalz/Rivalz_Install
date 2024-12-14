@@ -13,7 +13,10 @@ read -p "Введите ваш адрес кошелька: " WALLET_ADDRESS
 read -p "Укажите объем диска для использования (в ГБ): " DISK_SIZE
 
 # Устанавливаем имя контейнера
-CONTAINER_NAME="Rivalz"
+CONTAINER_NAME="rivalz"
+
+# Отладочный вывод
+set -x
 
 # Создаем Dockerfile
 cat <<EOF > Dockerfile
@@ -41,7 +44,7 @@ version: '3.8'
 services:
   $CONTAINER_NAME:
     build: .
-    container_name: $CONTAINER_NAME
+    container_name: "$CONTAINER_NAME"
     restart: always
     environment:
       - WALLET_ADDRESS=$WALLET_ADDRESS
@@ -60,6 +63,13 @@ if ! command -v docker-compose &> /dev/null; then
   chmod +x /usr/local/bin/docker-compose
 fi
 
+# Проверяем версию Docker Compose
+docker-compose version
+if [ $? -ne 0 ]; then
+  echo "Ошибка: docker-compose не установлен корректно."
+  exit 1
+fi
+
 # Проверяем сборку Docker Compose
 echo "Проверка docker-compose.yml..."
 docker-compose config
@@ -76,15 +86,18 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
+# Отключение отладочного вывода
+set +x
+
 # Показать логи контейнера
 sleep 5
 echo "Проверка логов контейнера..."
-docker logs $CONTAINER_NAME | uniq > ./logs/latest.log
+docker logs "$CONTAINER_NAME" | uniq > ./logs/latest.log
 echo -e "Логи контейнера обновлены. Для просмотра выполните команду:
   tail -f ./logs/latest.log"
 
 echo -e "Для входа в контейнер выполните команду:
-  docker exec -it $CONTAINER_NAME bash"
+  docker exec -it "$CONTAINER_NAME" bash"
 
 echo -e "Для проверки логов внутри контейнера выполните команду:
   tail -f /app/logs/node.log"
