@@ -5,7 +5,7 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
-# Function to prompt for input with validation
+# Функция для запроса ввода с проверкой на пустое значение
 prompt_input() {
     local prompt_message=$1
     local var_name=$2
@@ -49,7 +49,6 @@ RUN apt-get update && apt-get install -y \\
     curl \\
     bash \\
     gnupg \\
-    expect \\
     && rm -rf /var/lib/apt/lists/*
 
 # Установка Node.js 18.x из NodeSource
@@ -59,80 +58,28 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \\
 # Установка rivalz-node-cli глобально
 RUN npm install -g rivalz-node-cli
 
-# Установка PS1
+# Установка PS1 для отображения имени контейнера в приглашении
 ENV PS1="[Rivalz] \w\$ "
 
 # Создание рабочей директории
 WORKDIR /app
 
-# Копирование entrypoint.sh и setup_expect.sh
-COPY entrypoint.sh /entrypoint.sh
-COPY setup_expect.sh /setup_expect.sh
-RUN chmod +x /entrypoint.sh /setup_expect.sh
-
-# Установка точки входа
-ENTRYPOINT ["/entrypoint.sh"]
+# Установка точки входа на bash, чтобы контейнер оставался активным
+CMD ["bash"]
 EOF
 
 echo "Dockerfile создан."
 
-# 4. Создание setup_expect.sh
-cat > setup_expect.sh <<'EOF'
-#!/usr/bin/expect -f
-
-set timeout -1
-
-# Запуск rivalz run
-spawn rivalz run
-
-# Ввод адреса кошелька
-expect "? Enter wallet address (EVM):"
-send "$env(WALLET_ADDRESS)\r"
-
-# Пропуск выбора диска (нажать Enter)
-expect "? Select drive you want to use:"
-send "\r"
-
-# Ввод размера диска
-expect "? Enter disk size (e.g., 100G):"
-send "$env(DISK_SIZE)\r"
-
-# Оставить процесс в фоне
-expect eof
-EOF
-
-echo "setup_expect.sh создан."
-
-# 5. Создание entrypoint.sh
-cat > entrypoint.sh <<'EOF'
-#!/bin/bash
-
-# Функция для перезапуска ноды при сбое
-run_node() {
-    while true; do
-        # Запуск rivalz run с использованием Expect для автоматизации ввода
-        /setup_expect.sh | tee /app/rivalz.log
-        echo "rivalz run завершился с кодом $? Перезапуск через 5 секунд..."
-        sleep 5
-    done
-}
-
-# Запуск функции
-run_node
-EOF
-
-echo "entrypoint.sh создан."
-
-# 6. Построение Docker образа без использования кэша
-IMAGE_NAME="rivalz-node"
+# 4. Построение Docker образа без использования кэша
+IMAGE_NAME="Rivalz-node"
 docker build --no-cache -t $IMAGE_NAME .
 
 echo "Docker образ $IMAGE_NAME успешно построен."
 
-# 7. Запуск Docker контейнера
+# 5. Запуск Docker контейнера
 CONTAINER_NAME="Rivalz"
 
-# Проверка, запущен ли уже контейнер с таким именем
+# Проверка, существует ли уже контейнер с таким именем
 if [ "$(docker ps -aq -f name=^/${CONTAINER_NAME}$)" ]; then
     echo "Контейнер с именем $CONTAINER_NAME уже существует. Перезапускаем его."
     docker rm -f $CONTAINER_NAME
@@ -147,12 +94,17 @@ docker run -d \
 
 echo "Контейнер $CONTAINER_NAME запущен и настроен на автоматический перезапуск."
 
-# 8. Финальные инструкции
+# 6. Финальные инструкции
 echo "Установка и запуск ноды Rivalz завершены успешно."
+echo "Для запуска ноды выполните следующие шаги:"
+echo "1. Подключитесь к контейнеру:"
+echo "   docker exec -it $CONTAINER_NAME bash"
+echo "2. Внутри контейнера запустите команду:"
+echo "   rivalz run"
+echo "   - Введите ваш адрес кошелька и нажмите Enter."
+echo "   - Нажмите Enter для выбора диска по умолчанию."
+echo "   - Введите объем диска и нажмите Enter."
+echo ""
 echo "Вы можете проверить логи с хоста с помощью команды:"
 echo "  docker logs -f $CONTAINER_NAME"
-echo "Чтобы зайти в контейнер, используйте команду:"
-echo "  docker exec -it $CONTAINER_NAME bash"
-echo "Чтобы проверить логи внутри контейнера, используйте команду:"
-echo "  tail -f /app/rivalz.log"
-echo "Для отсоединения от просмотра логов без остановки ноды нажмите Ctrl+C."
+echo "Чтобы отсоединиться от просмотра логов без остановки ноды нажмите Ctrl+C."
