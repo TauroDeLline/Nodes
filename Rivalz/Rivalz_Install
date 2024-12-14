@@ -5,22 +5,7 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
-# 1. Запрос необходимых переменных
-echo "=== Установка Rivalz Node ==="
-
-read -p "Введите ваш адрес кошелька (EVM): " WALLET_ADDRESS
-while [[ -z "$WALLET_ADDRESS" ]]; do
-    echo "Значение не может быть пустым. Пожалуйста, попробуйте снова."
-    read -p "Введите ваш адрес кошелька (EVM): " WALLET_ADDRESS
-done
-
-read -p "Введите размер диска (например, 100G): " DISK_SIZE
-while [[ -z "$DISK_SIZE" ]]; do
-    echo "Значение не может быть пустым. Пожалуйста, попробуйте снова."
-    read -p "Введите размер диска (например, 100G): " DISK_SIZE
-done
-
-# 2. Создание директории для установки
+# 1. Создание директории для установки
 INSTALL_DIR="./Rivalz"
 
 if [ -d "$INSTALL_DIR" ]; then
@@ -32,7 +17,7 @@ fi
 
 cd "$INSTALL_DIR"
 
-# 3. Создание Dockerfile
+# 2. Создание Dockerfile
 cat > Dockerfile <<EOF
 FROM ubuntu:22.04
 
@@ -56,11 +41,30 @@ ENV PS1="[Rivalz] \w\$ "
 # Создание рабочей директории
 WORKDIR /app
 
-# Установка точки входа на bash, чтобы контейнер оставался активным
-CMD ["bash"]
+# Установка точки входа на стартовый скрипт
+COPY start_node.sh /start_node.sh
+RUN chmod +x /start_node.sh
+
+ENTRYPOINT ["/start_node.sh"]
 EOF
 
 echo "Dockerfile создан."
+
+# 3. Создание стартового скрипта start_node.sh
+cat > start_node.sh <<'EOF'
+#!/bin/bash
+
+# Проверка наличия необходимых переменных окружения
+if [ -z "$WALLET_ADDRESS" ] || [ -z "$DISK_SIZE" ]; then
+    echo "Ошибка: Переменные WALLET_ADDRESS и DISK_SIZE должны быть установлены."
+    exit 1
+fi
+
+# Запуск ноды Rivalz
+rivalz run
+EOF
+
+echo "start_node.sh создан."
 
 # 4. Построение Docker образа без использования кэша
 IMAGE_NAME="Rivalz-node"
@@ -80,14 +84,15 @@ fi
 docker run -d \
     --name $CONTAINER_NAME \
     --restart=always \
-    -e WALLET_ADDRESS="$WALLET_ADDRESS" \
-    -e DISK_SIZE="$DISK_SIZE" \
+    -e WALLET_ADDRESS="your_wallet_address_here" \
+    -e DISK_SIZE="your_disk_size_here" \
     $IMAGE_NAME
 
 echo "Контейнер $CONTAINER_NAME запущен и настроен на автоматический перезапуск."
 
 # 6. Финальные инструкции
 echo "Установка и запуск ноды Rivalz завершены успешно."
+echo ""
 echo "Для запуска ноды выполните следующие шаги:"
 echo "1. Подключитесь к контейнеру:"
 echo "   docker exec -it $CONTAINER_NAME bash"
