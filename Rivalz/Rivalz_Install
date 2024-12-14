@@ -5,29 +5,14 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
-# Function to prompt for user input
-prompt() {
-    read -p "$1: " input
-    echo "$input"
-}
-
 echo "=== Rivalz Node Deployment Script ==="
 
-# Prompt for necessary variables
+# Define variables
 NODE_NAME="Rivalz"
-
-# Prompt for EVM address
-EVM_ADDRESS=$(prompt "Введите ваш EVM адрес, привязанный к платформе")
-
-# Prompt for storage size in GB
-STORAGE_GB=$(prompt "Введите количество GB для хранения данных")
-
-# Define Docker image name
 IMAGE_NAME="rivalz-node-image"
-
-# Create a directory for the Docker build context
 BUILD_DIR="./rivalz-node"
 
+# Create a directory for the Docker build context
 mkdir -p $BUILD_DIR
 
 # Create Dockerfile
@@ -75,7 +60,7 @@ docker build -t $IMAGE_NAME $BUILD_DIR
 echo "Docker image '$IMAGE_NAME' built successfully."
 
 # Remove any existing container with the same name
-if [ "$(docker ps -aq -f name=$NODE_NAME)" ]; then
+if [ "$(docker ps -aq -f name=^${NODE_NAME}$)" ]; then
     echo "Removing existing container '$NODE_NAME'..."
     docker rm -f $NODE_NAME
 fi
@@ -87,13 +72,12 @@ docker run -d \
     --name $NODE_NAME \
     --restart unless-stopped \
     -v $BUILD_DIR/app:/app \
-    -e EVM_ADDRESS=$EVM_ADDRESS \
-    -e STORAGE_GB=$STORAGE_GB \
+    -p 3000:3000 \
     $IMAGE_NAME
 
 echo "Docker container '$NODE_NAME' is up and running."
 
 echo "=== Deployment Complete ==="
-echo "You can now attach to the container to complete the Rivalz node setup."
-echo "Use the following command to access the container shell:"
+echo "To complete the Rivalz node setup, attach to the container's shell:"
 echo "docker exec -it $NODE_NAME bash"
+echo "Then run 'rivalz run' inside the container to start the node setup process."
