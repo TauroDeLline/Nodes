@@ -45,11 +45,11 @@ WORKDIR /app
 # Set environment variable for shell prompt
 ENV PS1="[Rivalz] \\w\\$ "
 
-# Expose necessary ports (измените при необходимости)
+# Expose necessary ports (adjust if needed)
 EXPOSE 3000
 
-# Start a shell to allow manual setup
-CMD ["bash"]
+# Start a command that keeps the container running
+CMD ["tail", "-f", "/dev/null"]
 EOF
 
 echo "Dockerfile создан успешно."
@@ -77,10 +77,9 @@ docker run -d \
 
 echo "Docker контейнер '$NODE_NAME' запущен и работает."
 
+# Автоматическое подключение и запуск rivalz run
+echo "Запуск 'rivalz run' внутри контейнера..."
+docker exec -it $NODE_NAME bash -c "rivalz run"
+
 echo "=== Развертывание Завершено ==="
-echo "Для настройки Rivalz ноды выполните следующие шаги:"
-echo "1. Подключитесь к контейнеру:"
-echo "   docker exec -it $NODE_NAME bash"
-echo "2. Внутри контейнера запустите настройку ноды:"
-echo "   rivalz run"
-echo "3. После завершения настройки вы можете отсоединиться от контейнера без остановки ноды."
+echo "Вы можете отсоединиться от просмотра логов без остановки ноды с помощью Ctrl+C."
