@@ -1,107 +1,99 @@
 #!/bin/bash
 
-# Rivalz Node Installation Script
+# Script to deploy the Rivalz node in a Docker container on Ubuntu 22.04
 
 # Exit immediately if a command exits with a non-zero status
 set -e
 
-# 1. Создание директории для установки
-INSTALL_DIR="./Rivalz"
+# Function to prompt for user input
+prompt() {
+    read -p "$1: " input
+    echo "$input"
+}
 
-if [ -d "$INSTALL_DIR" ]; then
-    echo "Директория $INSTALL_DIR уже существует. Продолжаем установку."
-else
-    mkdir -p "$INSTALL_DIR"
-    echo "Создана директория $INSTALL_DIR."
-fi
+echo "=== Rivalz Node Deployment Script ==="
 
-cd "$INSTALL_DIR"
+# Prompt for necessary variables
+NODE_NAME="Rivalz"
 
-# 2. Создание Dockerfile
-cat > Dockerfile <<EOF
+# Prompt for EVM address
+EVM_ADDRESS=$(prompt "Введите ваш EVM адрес, привязанный к платформе")
+
+# Prompt for storage size in GB
+STORAGE_GB=$(prompt "Введите количество GB для хранения данных")
+
+# Define Docker image name
+IMAGE_NAME="rivalz-node-image"
+
+# Create a directory for the Docker build context
+BUILD_DIR="./rivalz-node"
+
+mkdir -p $BUILD_DIR
+
+# Create Dockerfile
+cat > $BUILD_DIR/Dockerfile <<EOF
+# Use Ubuntu 22.04 as the base image
 FROM ubuntu:22.04
 
-# Установка зависимостей
-RUN apt-get update && apt-get install -y \\
-    curl \\
-    bash \\
-    gnupg \\
-    && rm -rf /var/lib/apt/lists/*
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Установка Node.js 18.x из NodeSource
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \\
-    apt-get install -y nodejs
+# Update and upgrade packages
+RUN apt-get update && apt-get upgrade -y
 
-# Установка rivalz-node-cli глобально
+# Install curl and other dependencies
+RUN apt-get install -y curl gnupg2
+
+# Install Node.js 20.x
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+RUN apt-get install -y nodejs
+
+# Install Rivalz Node CLI globally
 RUN npm install -g rivalz-node-cli
 
-# Установка PS1 для отображения имени контейнера в приглашении
-ENV PS1="[Rivalz] \w\$ "
+# Create application directory
+RUN mkdir -p /app
 
-# Создание рабочей директории
+# Set working directory
 WORKDIR /app
 
-# Установка точки входа на стартовый скрипт
-COPY start_node.sh /start_node.sh
-RUN chmod +x /start_node.sh
+# Set environment variable for shell prompt
+ENV PS1="[Rivalz] \\w\\$ "
 
-ENTRYPOINT ["/start_node.sh"]
+# Expose necessary ports (adjust if needed)
+EXPOSE 3000
+
+# Start the Rivalz node
+CMD ["bash", "-c", "rivalz run"]
 EOF
 
-echo "Dockerfile создан."
+echo "Dockerfile created successfully."
 
-# 3. Создание стартового скрипта start_node.sh
-cat > start_node.sh <<'EOF'
-#!/bin/bash
+# Build the Docker image
+echo "Building Docker image..."
+docker build -t $IMAGE_NAME $BUILD_DIR
+echo "Docker image '$IMAGE_NAME' built successfully."
 
-# Проверка наличия необходимых переменных окружения
-if [ -z "$WALLET_ADDRESS" ] || [ -z "$DISK_SIZE" ]; then
-    echo "Ошибка: Переменные WALLET_ADDRESS и DISK_SIZE должны быть установлены."
-    exit 1
+# Remove any existing container with the same name
+if [ "$(docker ps -aq -f name=$NODE_NAME)" ]; then
+    echo "Removing existing container '$NODE_NAME'..."
+    docker rm -f $NODE_NAME
 fi
 
-# Запуск ноды Rivalz
-rivalz run
-EOF
-
-echo "start_node.sh создан."
-
-# 4. Построение Docker образа без использования кэша
-IMAGE_NAME="Rivalz-node"
-docker build --no-cache -t $IMAGE_NAME .
-
-echo "Docker образ $IMAGE_NAME успешно построен."
-
-# 5. Запуск Docker контейнера
-CONTAINER_NAME="Rivalz"
-
-# Проверка, существует ли уже контейнер с таким именем
-if [ "$(docker ps -aq -f name=^/${CONTAINER_NAME}$)" ]; then
-    echo "Контейнер с именем $CONTAINER_NAME уже существует. Перезапускаем его."
-    docker rm -f $CONTAINER_NAME
-fi
+# Run the Docker container with specified configurations
+echo "Running Docker container '$NODE_NAME'..."
 
 docker run -d \
-    --name $CONTAINER_NAME \
-    --restart=always \
-    -e WALLET_ADDRESS="your_wallet_address_here" \
-    -e DISK_SIZE="your_disk_size_here" \
+    --name $NODE_NAME \
+    --restart unless-stopped \
+    -v $BUILD_DIR/app:/app \
+    -e EVM_ADDRESS=$EVM_ADDRESS \
+    -e STORAGE_GB=$STORAGE_GB \
     $IMAGE_NAME
 
-echo "Контейнер $CONTAINER_NAME запущен и настроен на автоматический перезапуск."
+echo "Docker container '$NODE_NAME' is up and running."
 
-# 6. Финальные инструкции
-echo "Установка и запуск ноды Rivalz завершены успешно."
-echo ""
-echo "Для запуска ноды выполните следующие шаги:"
-echo "1. Подключитесь к контейнеру:"
-echo "   docker exec -it $CONTAINER_NAME bash"
-echo "2. Внутри контейнера запустите команду:"
-echo "   rivalz run"
-echo "   - Введите ваш адрес кошелька и нажмите Enter."
-echo "   - Нажмите Enter для выбора диска по умолчанию."
-echo "   - Введите объем диска и нажмите Enter."
-echo ""
-echo "Вы можете проверить логи с хоста с помощью команды:"
-echo "  docker logs -f $CONTAINER_NAME"
-echo "Чтобы отсоединиться от просмотра логов без остановки ноды нажмите Ctrl+C."
+echo "=== Deployment Complete ==="
+echo "You can now attach to the container to complete the Rivalz node setup."
+echo "Use the following command to access the container shell:"
+echo "docker exec -it $NODE_NAME bash"
