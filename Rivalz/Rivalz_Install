@@ -45,28 +45,28 @@ WORKDIR /app
 # Set environment variable for shell prompt
 ENV PS1="[Rivalz] \\w\\$ "
 
-# Expose necessary ports (adjust if needed)
+# Expose necessary ports (измените при необходимости)
 EXPOSE 3000
 
-# Start the Rivalz node
-CMD ["bash", "-c", "rivalz run"]
+# Start a shell to allow manual setup
+CMD ["bash"]
 EOF
 
-echo "Dockerfile created successfully."
+echo "Dockerfile создан успешно."
 
 # Build the Docker image
-echo "Building Docker image..."
+echo "Сборка Docker образа..."
 docker build -t $IMAGE_NAME $BUILD_DIR
-echo "Docker image '$IMAGE_NAME' built successfully."
+echo "Docker образ '$IMAGE_NAME' успешно собран."
 
-# Remove any existing container with the same name
+# Удалить существующий контейнер с тем же именем, если он существует
 if [ "$(docker ps -aq -f name=^${NODE_NAME}$)" ]; then
-    echo "Removing existing container '$NODE_NAME'..."
+    echo "Удаление существующего контейнера '$NODE_NAME'..."
     docker rm -f $NODE_NAME
 fi
 
-# Run the Docker container with specified configurations
-echo "Running Docker container '$NODE_NAME'..."
+# Запуск Docker контейнера с указанными конфигурациями
+echo "Запуск Docker контейнера '$NODE_NAME'..."
 
 docker run -d \
     --name $NODE_NAME \
@@ -75,9 +75,12 @@ docker run -d \
     -p 3000:3000 \
     $IMAGE_NAME
 
-echo "Docker container '$NODE_NAME' is up and running."
+echo "Docker контейнер '$NODE_NAME' запущен и работает."
 
-echo "=== Deployment Complete ==="
-echo "To complete the Rivalz node setup, attach to the container's shell:"
-echo "docker exec -it $NODE_NAME bash"
-echo "Then run 'rivalz run' inside the container to start the node setup process."
+echo "=== Развертывание Завершено ==="
+echo "Для настройки Rivalz ноды выполните следующие шаги:"
+echo "1. Подключитесь к контейнеру:"
+echo "   docker exec -it $NODE_NAME bash"
+echo "2. Внутри контейнера запустите настройку ноды:"
+echo "   rivalz run"
+echo "3. После завершения настройки вы можете отсоединиться от контейнера без остановки ноды."
