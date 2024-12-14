@@ -5,28 +5,20 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
-# Функция для запроса ввода с проверкой на пустое значение
-prompt_input() {
-    local prompt_message=$1
-    local var_name=$2
-    local input
-
-    while true; do
-        read -p "$prompt_message: " input
-        if [ -z "$input" ]; then
-            echo "Значение не может быть пустым. Пожалуйста, попробуйте снова."
-        else
-            export $var_name="$input"
-            break
-        fi
-    done
-}
-
 # 1. Запрос необходимых переменных
 echo "=== Установка Rivalz Node ==="
 
-prompt_input "Введите ваш адрес кошелька (EVM)" WALLET_ADDRESS
-prompt_input "Введите размер диска (например, 100G)" DISK_SIZE
+read -p "Введите ваш адрес кошелька (EVM): " WALLET_ADDRESS
+while [[ -z "$WALLET_ADDRESS" ]]; do
+    echo "Значение не может быть пустым. Пожалуйста, попробуйте снова."
+    read -p "Введите ваш адрес кошелька (EVM): " WALLET_ADDRESS
+done
+
+read -p "Введите размер диска (например, 100G): " DISK_SIZE
+while [[ -z "$DISK_SIZE" ]]; do
+    echo "Значение не может быть пустым. Пожалуйста, попробуйте снова."
+    read -p "Введите размер диска (например, 100G): " DISK_SIZE
+done
 
 # 2. Создание директории для установки
 INSTALL_DIR="./Rivalz"
