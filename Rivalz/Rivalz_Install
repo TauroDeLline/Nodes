@@ -25,7 +25,7 @@ prompt_input() {
 # 1. Запрос необходимых переменных
 echo "=== Установка Rivalz Node ==="
 
-prompt_input "Введите ваш адрес кошелька" WALLET_ADDRESS
+prompt_input "Введите ваш адрес кошелька (EVM)" WALLET_ADDRESS
 prompt_input "Введите размер диска (например, 100G)" DISK_SIZE
 
 # 2. Создание директории для установки
@@ -49,6 +49,7 @@ RUN apt-get update && apt-get install -y \\
     curl \\
     bash \\
     gnupg \\
+    expect \\
     && rm -rf /var/lib/apt/lists/*
 
 # Установка Node.js 18.x из NodeSource
@@ -64,9 +65,10 @@ ENV PS1="[Rivalz] \w\$ "
 # Создание рабочей директории
 WORKDIR /app
 
-# Копирование entrypoint.sh
+# Копирование entrypoint.sh и expect скрипта
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY setup_expect.sh /setup_expect.sh
+RUN chmod +x /entrypoint.sh /setup_expect.sh
 
 # Установка точки входа
 ENTRYPOINT ["/entrypoint.sh"]
@@ -74,15 +76,42 @@ EOF
 
 echo "Dockerfile создан."
 
-# 4. Создание entrypoint.sh
+# 4. Создание setup_expect.sh
+cat > setup_expect.sh <<'EOF'
+#!/usr/bin/expect -f
+
+set timeout -1
+
+# Запуск rivalz run
+spawn rivalz run
+
+# Ввод адреса кошелька
+expect "? Enter wallet address (EVM):"
+send "$env(WALLET_ADDRESS)\r"
+
+# Пропуск выбора диска (нажать Enter)
+expect "? Select drive you want to use:  (Use arrow keys)"
+send "\r"
+
+# Ввод размера диска
+expect "Enter disk size (e.g., 100G):"
+send "$env(DISK_SIZE)\r"
+
+# Оставить процесс в фоне
+expect eof
+EOF
+
+echo "setup_expect.sh создан."
+
+# 5. Создание entrypoint.sh
 cat > entrypoint.sh <<'EOF'
 #!/bin/bash
 
 # Функция для перезапуска ноды при сбое
 run_node() {
     while true; do
-        # Запуск rivalz run с передачей входных данных
-        echo -e "$WALLET_ADDRESS\n\n$DISK_SIZE" | rivalz run 2>&1 | tee /app/rivalz.log
+        # Запуск rivalz run с использованием Expect для автоматизации ввода
+        /setup_expect.sh | tee /app/rivalz.log
         echo "rivalz run завершился с кодом $? Перезапуск через 5 секунд..."
         sleep 5
     done
@@ -94,13 +123,13 @@ EOF
 
 echo "entrypoint.sh создан."
 
-# 5. Построение Docker образа
+# 6. Построение Docker образа
 IMAGE_NAME="rivalz-node"
 docker build -t $IMAGE_NAME .
 
 echo "Docker образ $IMAGE_NAME успешно построен."
 
-# 6. Запуск Docker контейнера
+# 7. Запуск Docker контейнера
 CONTAINER_NAME="Rivalz"
 
 # Проверка, запущен ли уже контейнер с таким именем
@@ -118,7 +147,7 @@ docker run -d \
 
 echo "Контейнер $CONTAINER_NAME запущен и настроен на автоматический перезапуск."
 
-# 7. Финальные инструкции
+# 8. Финальные инструкции
 echo "Установка и запуск ноды Rivalz завершены успешно."
 echo "Вы можете проверить логи с хоста с помощью команды:"
 echo "  docker logs -f $CONTAINER_NAME"
