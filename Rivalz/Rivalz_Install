@@ -1,5 +1,5 @@
 #!/bin/bash
-
+ 
 # Script to deploy the Rivalz node in a Docker container on Ubuntu 22.04
 
 # Exit immediately if a command exits with a non-zero status
