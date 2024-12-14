@@ -1,106 +1,126 @@
 #!/bin/bash
 
-# Скрипт для автоматической установки и запуска ноды Rivalz в контейнере Docker
+# Rivalz Node Installation Script
 
-# Проверяем, что скрипт выполняется с правами root
-if [ "$(id -u)" -ne 0 ]; then
-  echo "Пожалуйста, запустите скрипт с правами root."
-  exit 1
+# Exit immediately if a command exits with a non-zero status
+set -e
+
+# Function to prompt for input with validation
+prompt_input() {
+    local prompt_message=$1
+    local var_name=$2
+    local input
+
+    while true; do
+        read -p "$prompt_message: " input
+        if [ -z "$input" ]; then
+            echo "Значение не может быть пустым. Пожалуйста, попробуйте снова."
+        else
+            export $var_name="$input"
+            break
+        fi
+    done
+}
+
+# 1. Запрос необходимых переменных
+echo "=== Установка Rivalz Node ==="
+
+prompt_input "Введите ваш адрес кошелька" WALLET_ADDRESS
+prompt_input "Введите размер диска (например, 100G)" DISK_SIZE
+
+# 2. Создание директории для установки
+INSTALL_DIR="./Rivalz"
+
+if [ -d "$INSTALL_DIR" ]; then
+    echo "Директория $INSTALL_DIR уже существует. Продолжаем установку."
+else
+    mkdir -p "$INSTALL_DIR"
+    echo "Создана директория $INSTALL_DIR."
 fi
 
-# Запрос данных у пользователя
-read -p "Введите ваш адрес кошелька: " WALLET_ADDRESS
-read -p "Укажите объем диска для использования (в ГБ): " DISK_SIZE
+cd "$INSTALL_DIR"
 
-# Устанавливаем имя контейнера
-CONTAINER_NAME="rivalz"
-
-# Отладочный вывод
-set -x
-
-# Создаем Dockerfile
-cat <<EOF > Dockerfile
-FROM node:18
+# 3. Создание Dockerfile
+cat > Dockerfile <<EOF
+FROM ubuntu:22.04
 
 # Установка зависимостей
-RUN apt-get update && apt-get install -y npm && npm install -g rivalz-node-cli
+RUN apt-get update && apt-get install -y \\
+    curl \\
+    bash \\
+    nodejs \\
+    npm \\
+    && rm -rf /var/lib/apt/lists/*
 
-# Создаем рабочую директорию
+# Установка rivalz-node-cli глобально
+RUN npm install -g rivalz-node-cli
+
+# Установка PS1
+ENV PS1="[Rivalz] \w\$ "
+
+# Создание рабочей директории
 WORKDIR /app
 
-# Устанавливаем переменную окружения для приглашения PS1
-ENV PS1="[$CONTAINER_NAME] \w\$ "
+# Копирование entrypoint.sh
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-# Создаем файл ввода для rivalz run
-RUN echo -e "$WALLET_ADDRESS\n\n$DISK_SIZE" > /app/input.txt
-
-# Команда запуска ноды
-CMD ["sh", "-c", "cat /app/input.txt | rivalz run > /app/logs/node.log 2>&1"]
+# Установка точки входа
+ENTRYPOINT ["/entrypoint.sh"]
 EOF
 
-# Создаем docker-compose.yml
-cat <<EOF > docker-compose.yml
-version: '3.8'
-services:
-  $CONTAINER_NAME:
-    build: .
-    container_name: "$CONTAINER_NAME"
-    restart: always
-    environment:
-      - WALLET_ADDRESS=$WALLET_ADDRESS
-      - DISK_SIZE=$DISK_SIZE
-    volumes:
-      - ./logs:/app/logs
+echo "Dockerfile создан."
+
+# 4. Создание entrypoint.sh
+cat > entrypoint.sh <<'EOF'
+#!/bin/bash
+
+# Функция для перезапуска ноды при сбое
+run_node() {
+    while true; do
+        # Запуск rivalz run с передачей входных данных
+        echo -e "$WALLET_ADDRESS\n\n$DISK_SIZE" | rivalz run 2>&1 | tee /app/rivalz.log
+        echo "rivalz run завершился с кодом $? Перезапуск через 5 секунд..."
+        sleep 5
+    done
+}
+
+# Запуск функции
+run_node
 EOF
 
-# Создаем директорию для логов
-mkdir -p logs
+echo "entrypoint.sh создан."
 
-# Проверяем наличие docker-compose и устанавливаем, если отсутствует
-if ! command -v docker-compose &> /dev/null; then
-  echo "docker-compose не найден, устанавливаю..."
-  curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-  chmod +x /usr/local/bin/docker-compose
+# 5. Построение Docker образа
+IMAGE_NAME="rivalz-node"
+docker build -t $IMAGE_NAME .
+
+echo "Docker образ $IMAGE_NAME успешно построен."
+
+# 6. Запуск Docker контейнера
+CONTAINER_NAME="Rivalz"
+
+# Проверка, запущен ли уже контейнер с таким именем
+if [ "$(docker ps -aq -f name=^/${CONTAINER_NAME}$)" ]; then
+    echo "Контейнер с именем $CONTAINER_NAME уже существует. Перезапускаем его."
+    docker rm -f $CONTAINER_NAME
 fi
 
-# Проверяем версию Docker Compose
-docker-compose version
-if [ $? -ne 0 ]; then
-  echo "Ошибка: docker-compose не установлен корректно."
-  exit 1
-fi
+docker run -d \
+    --name $CONTAINER_NAME \
+    --restart=always \
+    -e WALLET_ADDRESS="$WALLET_ADDRESS" \
+    -e DISK_SIZE="$DISK_SIZE" \
+    $IMAGE_NAME
 
-# Проверяем сборку Docker Compose
-echo "Проверка docker-compose.yml..."
-docker-compose config
-if [ $? -ne 0 ]; then
-  echo "Ошибка в конфигурации docker-compose.yml. Проверьте файл."
-  exit 1
-fi
+echo "Контейнер $CONTAINER_NAME запущен и настроен на автоматический перезапуск."
 
-# Строим и запускаем контейнер
-echo "Строим и запускаем контейнер..."
-docker-compose up -d --build
-if [ $? -ne 0 ]; then
-  echo "Ошибка при запуске контейнера. Проверьте Dockerfile и конфигурацию."
-  exit 1
-fi
-
-# Отключение отладочного вывода
-set +x
-
-# Показать логи контейнера
-sleep 5
-echo "Проверка логов контейнера..."
-docker logs "$CONTAINER_NAME" | uniq > ./logs/latest.log
-echo -e "Логи контейнера обновлены. Для просмотра выполните команду:
-  tail -f ./logs/latest.log"
-
-echo -e "Для входа в контейнер выполните команду:
-  docker exec -it "$CONTAINER_NAME" bash"
-
-echo -e "Для проверки логов внутри контейнера выполните команду:
-  tail -f /app/logs/node.log"
-
-# Завершающее сообщение
-echo -e "Скрипт завершён. Контейнер с именем $CONTAINER_NAME успешно запущен."
+# 7. Финальные инструкции
+echo "Установка и запуск ноды Rivalz завершены успешно."
+echo "Вы можете проверить логи с хоста с помощью команды:"
+echo "  docker logs -f $CONTAINER_NAME"
+echo "Чтобы зайти в контейнер, используйте команду:"
+echo "  docker exec -it $CONTAINER_NAME bash"
+echo "Чтобы проверить логи внутри контейнера, используйте команду:"
+echo "  tail -f /app/rivalz.log"
+echo "Для отсоединения от просмотра логов без остановки ноды нажмите Ctrl+C."
