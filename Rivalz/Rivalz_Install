@@ -48,9 +48,12 @@ FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y \\
     curl \\
     bash \\
-    nodejs \\
-    npm \\
+    gnupg \\
     && rm -rf /var/lib/apt/lists/*
+
+# Установка Node.js 18.x из NodeSource
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \\
+    apt-get install -y nodejs
 
 # Установка rivalz-node-cli глобально
 RUN npm install -g rivalz-node-cli
