@@ -1,5 +1,5 @@
 #!/bin/bash
- 
+
 # Script to deploy the Rivalz node in a Docker container on Ubuntu 22.04
 
 # Exit immediately if a command exits with a non-zero status
@@ -77,7 +77,11 @@ echo "Docker контейнер '$NODE_NAME' запущен и работает.
 
 # Автоматическое подключение и запуск rivalz run в tmux сессии
 echo "Запуск 'rivalz run' внутри контейнера в tmux сессии..."
-docker exec -it $NODE_NAME bash -c "tmux new-session -d -s rivalz_session 'rivalz run'"
+docker exec -it $NODE_NAME bash -c "tmux new-session -d -s rivalz_session 'rivalz run | tee /app/node.log'"
+
+# Подключение к контейнеру и tmux сессии
+echo "Подключение к контейнеру и tmux сессии..."
+docker exec -it $NODE_NAME bash -c "tmux attach-session -t rivalz_session"
 
 echo "=== Развертывание Завершено ==="
-echo "Вы можете отсоединиться от просмотра логов без остановки ноды с помощью Ctrl+C."
+echo "Вы можете отсоединиться от просмотра логов без остановки ноды с помощью Ctrl+B, затем D."
