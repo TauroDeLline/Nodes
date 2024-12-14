@@ -65,7 +65,7 @@ ENV PS1="[Rivalz] \w\$ "
 # Создание рабочей директории
 WORKDIR /app
 
-# Копирование entrypoint.sh и expect скрипта
+# Копирование entrypoint.sh и setup_expect.sh
 COPY entrypoint.sh /entrypoint.sh
 COPY setup_expect.sh /setup_expect.sh
 RUN chmod +x /entrypoint.sh /setup_expect.sh
@@ -90,11 +90,11 @@ expect "? Enter wallet address (EVM):"
 send "$env(WALLET_ADDRESS)\r"
 
 # Пропуск выбора диска (нажать Enter)
-expect "? Select drive you want to use:  (Use arrow keys)"
+expect "? Select drive you want to use:"
 send "\r"
 
 # Ввод размера диска
-expect "Enter disk size (e.g., 100G):"
+expect "? Enter disk size (e.g., 100G):"
 send "$env(DISK_SIZE)\r"
 
 # Оставить процесс в фоне
@@ -123,9 +123,9 @@ EOF
 
 echo "entrypoint.sh создан."
 
-# 6. Построение Docker образа
+# 6. Построение Docker образа без использования кэша
 IMAGE_NAME="rivalz-node"
-docker build -t $IMAGE_NAME .
+docker build --no-cache -t $IMAGE_NAME .
 
 echo "Docker образ $IMAGE_NAME успешно построен."
 
