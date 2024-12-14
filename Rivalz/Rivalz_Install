@@ -59,18 +59,17 @@ echo "Сборка Docker образа..."
 docker build -t $IMAGE_NAME $BUILD_DIR
 echo "Docker образ '$IMAGE_NAME' успешно собран."
 
-# Удалить существующий контейнер с тем же именем, если он существует
+# Remove existing container with the same name if it exists
 if [ "$(docker ps -aq -f name=^${NODE_NAME}$)" ]; then
     echo "Удаление существующего контейнера '$NODE_NAME'..."
     docker rm -f $NODE_NAME
 fi
 
-# Запуск Docker контейнера с указанными конфигурациями
+# Run the Docker container without restart policy
 echo "Запуск Docker контейнера '$NODE_NAME'..."
 
 docker run -d \
     --name $NODE_NAME \
-    --restart unless-stopped \
     -v $BUILD_DIR/app:/app \
     -p 3000:3000 \
     $IMAGE_NAME
