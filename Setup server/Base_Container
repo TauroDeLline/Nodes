@@ -1,0 +1,58 @@
+#!/bin/bash
+
+# Цвета для вывода
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+NC='\033[0m' # Без цвета
+
+# Запрос имени контейнера
+read -p "Введите имя для контейнера: " CONTAINER_NAME
+
+# Проверка, введено ли имя
+if [[ -z "$CONTAINER_NAME" ]]; then
+    echo -e "${RED}Имя контейнера не может быть пустым!${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}Создаём базовый универсальный образ...${NC}"
+# Создаём временную директорию и Dockerfile
+mkdir -p /tmp/baseimage
+cat <<EOF >/tmp/baseimage/Dockerfile
+FROM ubuntu:22.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt update && apt upgrade -y && \
+    apt install -y curl wget nano ca-certificates net-tools iproute2 procps && \
+    apt clean && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+CMD ["bash"]
+EOF
+
+# Сборка базового образа
+sudo docker build -t base-image:latest /tmp/baseimage
+
+# Очистка временной директории
+rm -rf /tmp/baseimage
+echo -e "${GREEN}Базовый образ успешно создан!${NC}"
+
+# Удаляем старый контейнер с введённым именем, если он существует
+if sudo docker ps -a --format '{{.Names}}' | grep -q "^$CONTAINER_NAME$"; then
+    echo -e "${GREEN}Удаляем существующий контейнер '$CONTAINER_NAME'...${NC}"
+    sudo docker rm -f "$CONTAINER_NAME"
+fi
+
+# Создаём контейнер с указанным именем и запускаем его в фоновом режиме
+echo -e "${GREEN}Создаём и запускаем контейнер '$CONTAINER_NAME'...${NC}"
+sudo docker run -dit --name "$CONTAINER_NAME" base-image:latest
+
+# Перенаправление логов контейнера в файл
+LOG_FILE="${CONTAINER_NAME}.log"
+echo -e "${GREEN}Перенаправляем логи контейнера в файл '$LOG_FILE'...${NC}"
+sudo docker logs -f "$CONTAINER_NAME" &> "$LOG_FILE" &
+
+# Вывод сообщения с инструкцией выхода
+echo -e "${GREEN}Контейнер '$CONTAINER_NAME' запущен. Для входа выполните:${NC}"
+echo "  sudo docker exec -it $CONTAINER_NAME bash"
+echo -e "${GREEN}Для остановки контейнера выполните:${NC}"
+echo "  sudo docker stop $CONTAINER_NAME"
+echo -e "${GREEN}Для удаления контейнера выполните:${NC}"
+echo "  sudo docker rm $CONTAINER_NAME"
