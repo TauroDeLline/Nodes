@@ -20,7 +20,7 @@ cat <<EOF > Dockerfile
 FROM node:18
 
 # Установка зависимостей
-RUN apt-get update && apt-get install -y expect && npm install -g rivalz-node-cli
+RUN apt-get update && apt-get install -y npm && npm install -g rivalz-node-cli
 
 # Создаем рабочую директорию
 WORKDIR /app
@@ -28,30 +28,15 @@ WORKDIR /app
 # Устанавливаем переменную окружения для приглашения PS1
 ENV PS1="[$CONTAINER_NAME] \w\$ "
 
-# Команда запуска ноды с использованием expect
-COPY start_node.sh /usr/local/bin/start_node.sh
-RUN chmod +x /usr/local/bin/start_node.sh
-CMD ["/usr/local/bin/start_node.sh"]
-EOF
-
-# Создаем скрипт для автоматизации ввода
-cat <<EOF > start_node.sh
-#!/usr/bin/env expect
-spawn rivalz run
-expect "? Enter wallet address (EVM):"
-send "$WALLET_ADDRESS\r"
-expect "?"
-send "\r"
-expect "?"
-send "$DISK_SIZE\r"
-interact
+# Команда запуска ноды
+CMD ["sh", "-c", "echo -e '$WALLET_ADDRESS\\n\\n$DISK_SIZE\\n' | rivalz run > /app/logs/node.log 2>&1"]
 EOF
 
 # Создаем docker-compose.yml
 cat <<EOF > docker-compose.yml
 version: '3.8'
 services:
-  rivalz_service:
+  $CONTAINER_NAME:
     build: .
     container_name: $CONTAINER_NAME
     restart: always
@@ -72,13 +57,25 @@ if ! command -v docker-compose &> /dev/null; then
   chmod +x /usr/local/bin/docker-compose
 fi
 
+# Проверяем сборку Docker Compose
+echo "Проверка docker-compose.yml..."
+docker-compose config
+if [ $? -ne 0 ]; then
+  echo "Ошибка в конфигурации docker-compose.yml. Проверьте файл."
+  exit 1
+fi
+
 # Строим и запускаем контейнер
+echo "Строим и запускаем контейнер..."
 docker-compose up -d --build
+if [ $? -ne 0 ]; then
+  echo "Ошибка при запуске контейнера. Проверьте Dockerfile и конфигурацию."
+  exit 1
+fi
 
 # Показать логи контейнера
 sleep 5
-
-# Удаление повторяющихся логов и вывод последних данных
+echo "Проверка логов контейнера..."
 docker logs $CONTAINER_NAME | uniq > ./logs/latest.log
 echo -e "Логи контейнера обновлены. Для просмотра выполните команду:
   tail -f ./logs/latest.log"
