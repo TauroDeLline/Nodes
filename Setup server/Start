@@ -34,27 +34,16 @@ sudo systemctl enable docker
 
 echo -e "${GREEN}Docker установлен успешно!${NC}"
 
-# Создаём и собираем базовый образ
-echo -e "${GREEN}Создаём базовый универсальный образ...${NC}"
-mkdir -p /tmp/baseimage
-cat <<EOF >/tmp/baseimage/Dockerfile
-FROM ubuntu:22.04
+# Устанавливаем Docker Compose
+echo -e "${GREEN}Устанавливаем Docker Compose...${NC}"
+DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep -Po '"tag_name": "\K.*?(?=")')
+sudo curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
 
-ENV DEBIAN_FRONTEND=noninteractive
+# Проверяем установку Docker Compose
+docker-compose --version
 
-RUN apt update && apt upgrade -y && \
-    apt install -y curl wget nano ca-certificates net-tools iproute2 procps && \
-    apt clean && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
-CMD ["bash"]
-EOF
-
-sudo docker build -t base-image:latest /tmp/baseimage
-rm -rf /tmp/baseimage
-
-echo -e "${GREEN}Базовый образ успешно создан!${NC}"
+echo -e "${GREEN}Docker Compose установлен успешно!${NC}"
 
 # Установка node_exporter для мониторинга
 echo -e "${GREEN}Устанавливаем node_exporter...${NC}"
