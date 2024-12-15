@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# ======== НАСТРОЙКИ ========
+INSTALL_SCRIPT_URL="https://raw.githubusercontent.com/oceanprotocol/ocean-node/main/scripts/ocean-node-quickstart.sh"  # Замените на URL установочного скрипта
+INSTALL_SCRIPT_NAME="install_ocean_node.sh"
+DOCKER_COMPOSE_FILE="docker-compose.yml"
+
+# ======== ЗАПРОС ИНФОРМАЦИИ ========
+read -p "Введите приватный ключ (0x...): " PRIVATE_KEY
+read -p "Введите Ethereum-адрес администратора (0x...): " ALLOWED_ADMINS
+read -p "Введите публичный IPv4-адрес или FQDN ноды: " P2P_ANNOUNCE_ADDRESS
+
+# ======== СКАЧИВАНИЕ УСТАНОВОЧНОГО СКРИПТА ========
+echo "Скачиваем установочный скрипт..."
+curl -o "$INSTALL_SCRIPT_NAME" "$INSTALL_SCRIPT_URL"
+chmod +x "$INSTALL_SCRIPT_NAME"
+
+# ======== АВТОМАТИЧЕСКИЙ ЗАПУСК СКРИПТА ========
+# Передаём значения в скрипт через here-document
+cat <<EOF | ./$INSTALL_SCRIPT_NAME
+y
+$PRIVATE_KEY
+$ALLOWED_ADMINS
+8000
+9000
+9001
+9002
+9003
+$P2P_ANNOUNCE_ADDRESS
+EOF
+
+# ======== ЗАПУСК КОНТЕЙНЕРА ========
+if [ -f "$DOCKER_COMPOSE_FILE" ]; then
+    echo "Запускаем контейнеры..."
+    docker-compose up -d
+
+    echo "Проверяем статус контейнеров..."
+    docker ps
+
+    echo "Вывод логов контейнера:"
+    docker-compose logs -f
+else
+    echo "Ошибка: файл $DOCKER_COMPOSE_FILE не найден. Проверьте установочный скрипт."
+    exit 1
+fi
