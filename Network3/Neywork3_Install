@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Устанавливаем необходимые зависимости
+apt-get update && apt-get install -y \
+    wget \
+    tar \
+    screen \
+    sudo \
+    bash \
+    curl \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Устанавливаем переменную окружения для удобного приглашения
+export PS1="[node] \w\$ "
+
+# Создаем рабочую директорию и переходим в нее
+mkdir -p /network3 && cd /network3
+
+# Скачиваем ноду
+wget https://network3.io/ubuntu-node-v2.1.0.tar && \
+    tar -xvf ubuntu-node-v2.1.0.tar && \
+    rm -rf ubuntu-node-v2.1.0.tar
+
+# Запускаем ноду в screen сессии
+screen -dmS network3 bash -c "sudo bash /network3/ubuntu-node/manager.sh up && sudo bash /network3/ubuntu-node/manager.sh key"
+
+# Ожидаем, пока нода выдаст ключ и ссылку
+sleep 10
+
+# Читаем лог ноды и находим API KEY и ссылку
+API_KEY=$(grep -oP 'API Key: \K.*' /network3/ubuntu-node/logs.txt | tail -n 1)
+LINK=$(grep -oP 'https://.*:8080' /network3/ubuntu-node/logs.txt | tail -n 1)
+
+# Выводим их в конце работы скрипта
+echo "API Key: $API_KEY"
+echo "Node Link: $LINK"
+
+# Оставляем живой лог для пользователя
+tail -f /network3/ubuntu-node/logs.txt
