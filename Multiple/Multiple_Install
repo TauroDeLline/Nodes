@@ -21,13 +21,16 @@ cat << 'EOF' > Dockerfile
 # Используем базовый образ Ubuntu 22.04
 FROM ubuntu:22.04
 
-# Установка необходимых пакетов
-RUN apt-get update && apt-get install -y wget tar libicu72 libicu-dev locales && apt-get clean
+# Исправление списка репозиториев и установка необходимых пакетов
+RUN sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirror.yandex.ru/ubuntu|g' /etc/apt/sources.list && \
+    apt-get update && \
+    apt-get install -y wget tar libicu-dev locales && \
+    apt-get clean
 
 # Настройка локалей
 RUN locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8
 
-# Настройка .NET с использованием ICU
+# Настройка ICU и .NET
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=0
 ENV LC_ALL=en_US.UTF-8
 ENV LANG=en_US.UTF-8
@@ -79,6 +82,10 @@ docker exec -it $NODE_NAME ./multiple-cli bind \
     --pin $PIN \
     --storage $STORAGE \
     --bandwidth-upload $BANDWIDTH_UPLOAD
+
+# Проверка наличия ICU
+echo "Проверка ICU в контейнере:"
+docker exec -it $NODE_NAME bash -c "ldconfig -p | grep icu"
 
 # Подключение к логам контейнера (можно отключиться Ctrl+C)
 echo "Запущен просмотр логов. Нажмите Ctrl+C для выхода."
