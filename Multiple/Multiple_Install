@@ -51,21 +51,25 @@ RUN echo "=== Скачиваем клиент Multiple ===" && \
     mv /opt/multiple/*/multiple-cli /opt/multiple/multiple-cli 2>/dev/null || true && \
     mv /opt/multiple/*/multiple-node /opt/multiple/multiple-node 2>/dev/null || true && \
     echo "=== Устанавливаем права доступа ===" && \
-    chmod -R 777 /opt/multiple
+    chmod -R 777 /opt/multiple && \
+    touch /opt/multiple/Config/app.config && \
+    chmod 666 /opt/multiple/Config/app.config
 
 # Проверка прав доступа
 RUN echo "=== Проверяем права доступа на директории ===" && \
-    ls -ld /opt/multiple /opt/multiple/Tracks /opt/multiple/Config
+    ls -ld /opt/multiple /opt/multiple/Tracks /opt/multiple/Config && \
+    ls -la /opt/multiple/Config
 
 # Настройка PATH
 ENV PATH="/opt/multiple:$PATH"
+ENV DOTNET_SYSTEM_CONFIGURATION_DISABLE=1
 
 # Настройка приглашения bash
 ENV PS1="[Multiple] \\w\\$ "
 
-# Установка точки входа
+# Установка точки входа с отладочными параметрами
 WORKDIR /opt/multiple
-ENTRYPOINT ["./multiple-node"]
+ENTRYPOINT ["./multiple-node", "--verbose", "--debug"]
 EOF
 
 # Определение архитектуры и сборка образа
@@ -91,6 +95,7 @@ docker run -d --name $NODE_NAME --restart always multiple-node
 echo "=== Проверка ICU и прав доступа в контейнере ==="
 docker exec -it $NODE_NAME bash -c "ldconfig -p | grep icu"
 docker exec -it $NODE_NAME bash -c "ls -ld /opt/multiple /opt/multiple/Tracks /opt/multiple/Config"
+docker exec -it $NODE_NAME bash -c "ls -la /opt/multiple/Config"
 
 # Привязка учетной записи
 echo "=== Привязка учетной записи ==="
@@ -100,6 +105,10 @@ docker exec -it $NODE_NAME ./multiple-cli bind \
     --pin $PIN \
     --storage $STORAGE \
     --bandwidth-upload $BANDWIDTH_UPLOAD
+
+# Проверка логов
+echo "=== Проверяем логи приложения ==="
+docker exec -it $NODE_NAME bash -c "cat /opt/multiple/output.log"
 
 # Подключение к логам
 echo "=== Запущен просмотр логов. Нажмите Ctrl+C для выхода ==="
