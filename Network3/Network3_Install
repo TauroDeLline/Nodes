@@ -1,56 +1,42 @@
 #!/bin/bash
 
+# Установка зависимостей и подготовка окружения
+apt-get update && apt-get install -y wget tar curl sudo iproute2 iptables net-tools
+
 # Рабочая директория
 WORKDIR="/root/network3"
+mkdir -p $WORKDIR && cd $WORKDIR
 
-# Скачиваем и распаковываем файлы
-mkdir -p $WORKDIR
-cd $WORKDIR
+# Скачивание и распаковка файлов ноды
 wget https://network3.io/ubuntu-node-v2.1.0.tar
+
 tar -xvf ubuntu-node-v2.1.0.tar
 rm -f ubuntu-node-v2.1.0.tar
 
-# Создаём Dockerfile
-cat <<EOF > Dockerfile
-FROM ubuntu:22.04
+# Запуск ноды
+cd ubuntu-node
+bash manager.sh up
 
-RUN apt-get update && apt-get install -y bash tar curl sudo iproute2
-WORKDIR /network3
+# Извлечение ссылки для доступа к дашборду
+ACCESS_IP=$(hostname -I | awk '{print $1}')
+DASHBOARD_LINK="https://account.network3.ai/main?o=${ACCESS_IP}:8080"
+echo "Dashboard link: $DASHBOARD_LINK"
 
-COPY ubuntu-node /network3/ubuntu-node
+# Получение API Key
+API_KEY=$(bash manager.sh key)
+echo "API Key: $API_KEY"
 
-CMD ["bash", "/network3/ubuntu-node/manager.sh", "up"]
+# Вывод итоговых данных
+cat <<EOF
+
+Установка завершена.
+Данные для работы с нодой Network3:
+- Dashboard: $DASHBOARD_LINK
+- API Key: $API_KEY
+
+Для просмотра логов выполните:
+  docker logs -f Network3
+
+Для подключения к контейнеру выполните:
+  docker exec -it Network3 bash
 EOF
-
-# Собираем Docker-образ
-docker build -t network3 .
-
-# Проверяем занятость порта и выбираем первый свободный порт начиная с 8080
-BASE_PORT=8080
-while lsof -i:$BASE_PORT &>/dev/null; do
-  echo "Порт $BASE_PORT занят, проверяем следующий."
-  BASE_PORT=$((BASE_PORT + 1))
-done
-
-# Запускаем контейнер с найденным свободным портом
-echo "Используем порт $BASE_PORT для ноды."
-docker run -d --name Network3 -p $BASE_PORT:8080 network3
-
-# Ожидаем запуска ноды
-sleep 10
-
-# Извлекаем ключ API и ссылку
-API_KEY=$(docker logs Network3 2>/dev/null | grep -oP 'API Key: \K.*')
-NODE_LINK="http://$(hostname -I | awk '{print $1}'):$BASE_PORT"
-
-# Выводим результат
-if [[ -n $API_KEY ]]; then
-  echo "API Key: $API_KEY"
-  echo "Node Link: $NODE_LINK"
-else
-  echo "Не удалось получить ключ API и ссылку. Проверьте логи контейнера."
-fi
-
-# Инструкция по дальнейшей работе
-echo -e "\nДля просмотра логов выполните: docker logs -f Network3"
-echo "Для подключения к контейнеру выполните: docker exec -it Network3 bash"
