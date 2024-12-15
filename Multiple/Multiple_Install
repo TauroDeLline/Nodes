@@ -36,6 +36,7 @@ RUN locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8
 
 # Настройка ICU и .NET
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+ENV DOTNET_DiagnosticPorts=/tmp/dotnet-trace
 ENV LC_ALL=en_US.UTF-8
 ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US.UTF-8
@@ -43,7 +44,7 @@ ENV LANGUAGE=en_US.UTF-8
 # Скачивание клиента Multiple (определяется автоматически)
 ARG ARCH=x64
 RUN echo "=== Скачиваем клиент Multiple ===" && \
-    mkdir -p /opt/multiple/Tracks /opt/multiple/Config && \
+    mkdir -p /opt/multiple/Tracks /opt/multiple/Config /opt/multiple/logs && \
     wget -O /tmp/multiple.tar https://cdn.app.multiple.cc/client/linux/$ARCH/multipleforlinux.tar && \
     echo "=== Распаковываем клиент ===" && \
     tar -xvf /tmp/multiple.tar -C /opt/multiple && \
@@ -57,7 +58,7 @@ RUN echo "=== Скачиваем клиент Multiple ===" && \
 
 # Проверка прав доступа
 RUN echo "=== Проверяем права доступа на директории ===" && \
-    ls -ld /opt/multiple /opt/multiple/Tracks /opt/multiple/Config && \
+    ls -ld /opt/multiple /opt/multiple/Tracks /opt/multiple/Config /opt/multiple/logs && \
     ls -la /opt/multiple/Config
 
 # Настройка PATH
@@ -90,21 +91,22 @@ docker run -d --name $NODE_NAME --restart always multiple-node
 # Проверка ICU и директорий
 echo "=== Проверка ICU и прав доступа в контейнере ==="
 docker exec -it $NODE_NAME bash -c "ldconfig -p | grep icu"
-docker exec -it $NODE_NAME bash -c "ls -ld /opt/multiple /opt/multiple/Tracks /opt/multiple/Config"
+docker exec -it $NODE_NAME bash -c "ls -ld /opt/multiple /opt/multiple/Tracks /opt/multiple/Config /opt/multiple/logs"
 docker exec -it $NODE_NAME bash -c "ls -la /opt/multiple/Config"
 
-# Привязка учетной записи
+# Привязка учетной записи с отладкой
 echo "=== Привязка учетной записи ==="
 docker exec -it $NODE_NAME ./multiple-cli bind \
     --bandwidth-download $BANDWIDTH_DOWNLOAD \
     --identifier $IDENTIFIER \
     --pin $PIN \
     --storage $STORAGE \
-    --bandwidth-upload $BANDWIDTH_UPLOAD
+    --bandwidth-upload $BANDWIDTH_UPLOAD \
+    --verbose
 
-# Проверка логов
+# Проверка логов приложения
 echo "=== Проверяем логи приложения ==="
-docker exec -it $NODE_NAME bash -c "cat /opt/multiple/output.log"
+docker exec -it $NODE_NAME bash -c "cat /opt/multiple/logs/$(date +'%Y-%m-%d').log"
 
 # Подключение к логам
 echo "=== Запущен просмотр логов. Нажмите Ctrl+C для выхода ==="
