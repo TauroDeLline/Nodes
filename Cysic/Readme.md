@@ -1,5 +1,8 @@
-wget https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Cysic/Cysic_Install && chmod +x Cysic_Install && ./Cysic_Install
+## Быстрый запуск
 
+``` bash
+rm Cysic_Install wget https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Cysic/Cysic_Install && chmod +x Cysic_Install && ./Cysic_Install
+```
 
 # Установка и запуск ноды Cysic
 
