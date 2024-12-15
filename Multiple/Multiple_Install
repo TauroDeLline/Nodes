@@ -22,7 +22,7 @@ cat << 'EOF' > Dockerfile
 FROM ubuntu:22.04
 
 # Установка необходимых пакетов
-RUN apt-get update && apt-get install -y wget tar && apt-get clean
+RUN apt-get update && apt-get install -y wget tar libicu72 && apt-get clean
 
 # Скачивание клиента Multiple (определяется автоматически)
 ARG ARCH=x64
