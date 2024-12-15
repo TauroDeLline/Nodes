@@ -93,15 +93,14 @@ docker exec -it $NODE_NAME bash -c "ldconfig -p | grep icu"
 docker exec -it $NODE_NAME bash -c "ls -ld /opt/multiple /opt/multiple/Tracks /opt/multiple/Config /opt/multiple/logs"
 docker exec -it $NODE_NAME bash -c "ls -la /opt/multiple/Config"
 
-# Привязка учетной записи с отладкой
+# Привязка учетной записи
 echo "=== Привязка учетной записи ==="
 docker exec -it $NODE_NAME ./multiple-cli bind \
     --bandwidth-download $BANDWIDTH_DOWNLOAD \
     --identifier $IDENTIFIER \
     --pin $PIN \
     --storage $STORAGE \
-    --bandwidth-upload $BANDWIDTH_UPLOAD \
-    --verbose
+    --bandwidth-upload $BANDWIDTH_UPLOAD
 
 # Проверка логов приложения
 echo "=== Проверяем логи приложения ==="
