@@ -35,7 +35,7 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirror.yandex.ru/ubuntu|g'
 RUN locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8
 
 # Настройка ICU и .NET
-ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=0
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 ENV LC_ALL=en_US.UTF-8
 ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US.UTF-8
@@ -52,7 +52,7 @@ RUN echo "=== Скачиваем клиент Multiple ===" && \
     mv /opt/multiple/*/multiple-node /opt/multiple/multiple-node 2>/dev/null || true && \
     echo "=== Устанавливаем права доступа ===" && \
     chmod -R 777 /opt/multiple && \
-    touch /opt/multiple/Config/app.config && \
+    echo "<?xml version=\"1.0\"?><configuration><appSettings></appSettings></configuration>" > /opt/multiple/Config/app.config && \
     chmod 666 /opt/multiple/Config/app.config
 
 # Проверка прав доступа
@@ -62,14 +62,10 @@ RUN echo "=== Проверяем права доступа на директор
 
 # Настройка PATH
 ENV PATH="/opt/multiple:$PATH"
-ENV DOTNET_SYSTEM_CONFIGURATION_DISABLE=1
-
-# Настройка приглашения bash
-ENV PS1="[Multiple] \\w\\$ "
 
 # Установка точки входа с отладочными параметрами
 WORKDIR /opt/multiple
-ENTRYPOINT ["./multiple-node", "--verbose", "--debug"]
+ENTRYPOINT ["./multiple-node", "--verbose", "--debug", "--trace"]
 EOF
 
 # Определение архитектуры и сборка образа
