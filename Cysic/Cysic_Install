@@ -7,7 +7,7 @@ YELLOW='\033[0;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-# Проверка и удаление существующего контейнера
+# Проверка существующего контейнера
 if docker ps -a --format '{{.Names}}' | grep -q '^Cysic$'; then
     echo -e "${YELLOW}Контейнер 'Cysic' уже существует. Удалить его для замены? (y/n)${NC}"
     read REMOVE_EXISTING
@@ -20,7 +20,7 @@ if docker ps -a --format '{{.Names}}' | grep -q '^Cysic$'; then
     fi
 fi
 
-# Создание или использование существующего файла конфигурации
+# Создаём или используем существующий файл конфигурации
 CONFIG_FILE="cysic.env"
 if [[ -f "$CONFIG_FILE" ]]; then
     echo -e "${GREEN}Используем существующий файл конфигурации $CONFIG_FILE${NC}"
@@ -31,50 +31,33 @@ else
     echo -e "${GREEN}Файл конфигурации $CONFIG_FILE создан.${NC}"
 fi
 
-# Создаём Dockerfile.cysic
+# Создаём Dockerfile
 echo -e "${GREEN}Создаём Dockerfile.cysic...${NC}"
 cat <<EOF > Dockerfile.cysic
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y curl wget nano ca-certificates net-tools iproute2 procps supervisor && apt-get clean
+RUN apt-get update && apt-get install -y curl wget nano ca-certificates net-tools iproute2 procps && apt-get clean
 
-# Создаём необходимые директории
-RUN mkdir -p /var/log/supervisor /app
+WORKDIR /app
 
-# Добавляем конфигурации и переменные
-COPY cysic.env /app/cysic.env
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-
-# Скрипт запуска ноды
+# Скрипт запуска
 RUN echo '#!/bin/bash' > /app/start_node.sh && \
     echo 'source /app/cysic.env' >> /app/start_node.sh && \
     echo 'curl -L https://github.com/cysic-labs/phase2_libs/releases/download/v1.0.0/setup_linux.sh > /app/setup_linux.sh && bash /app/setup_linux.sh \$REWARD_ADDRESS' >> /app/start_node.sh && \
     echo 'cd /app/cysic-verifier && bash start.sh' >> /app/start_node.sh && \
     chmod +x /app/start_node.sh
 
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
-EOF
+COPY cysic.env /app/cysic.env
 
-# Создаём конфигурацию supervisord
-echo -e "${GREEN}Создаём конфигурацию supervisord...${NC}"
-cat <<EOF > supervisord.conf
-[supervisord]
-nodaemon=true
-
-[program:cysic_node]
-command=/app/start_node.sh
-autostart=true
-autorestart=true
-stderr_logfile=/var/log/supervisor/cysic_node.err.log
-stdout_logfile=/var/log/supervisor/cysic_node.out.log
+CMD ["/bin/bash", "/app/start_node.sh"]
 EOF
 
 # Сборка Docker-образа
 echo -e "${GREEN}Собираем Docker-образ 'cysic:latest'...${NC}"
 docker build -f Dockerfile.cysic -t cysic:latest .
 
-# Запуск нового контейнера
+# Запуск контейнера
 echo -e "${GREEN}Запускаем контейнер 'Cysic'...${NC}"
 docker run -d --name Cysic --restart unless-stopped -v "$(pwd)/$CONFIG_FILE:/app/cysic.env" cysic:latest
 
