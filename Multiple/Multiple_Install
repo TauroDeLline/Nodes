@@ -6,7 +6,7 @@ read -p "Введите уникальный идентификатор (identif
 # Фиксированные параметры
 NODE_NAME="Multiple"   # Имя контейнера
 PIN="000000"           # PIN-код
-STORAGE=1              # Размер хранилища (в GB)
+STORAGE=1000              # Размер хранилища (в GB)
 BANDWIDTH_UPLOAD=1000  # Исходящий трафик (в Mbps)
 BANDWIDTH_DOWNLOAD=1000 # Входящий трафик (в Mbps)
 
