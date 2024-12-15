@@ -31,7 +31,7 @@ else
     echo -e "${GREEN}Файл конфигурации $CONFIG_FILE создан.${NC}"
 fi
 
-# Создаём Dockerfile
+# Создаём Dockerfile.cysic
 echo -e "${GREEN}Создаём Dockerfile.cysic...${NC}"
 cat <<EOF > Dockerfile.cysic
 FROM ubuntu:22.04
@@ -41,14 +41,17 @@ RUN apt-get update && apt-get install -y curl wget nano ca-certificates net-tool
 
 WORKDIR /app
 
+# Добавляем файл конфигурации
+COPY cysic.env /app/cysic.env
+
 # Скрипт запуска
 RUN echo '#!/bin/bash' > /app/start_node.sh && \
     echo 'source /app/cysic.env' >> /app/start_node.sh && \
-    echo 'curl -L https://github.com/cysic-labs/phase2_libs/releases/download/v1.0.0/setup_linux.sh > /app/setup_linux.sh && bash /app/setup_linux.sh \$REWARD_ADDRESS' >> /app/start_node.sh && \
+    echo 'curl -L https://github.com/cysic-labs/phase2_libs/releases/download/v1.0.0/setup_linux.sh > /app/setup_linux.sh' >> /app/start_node.sh && \
+    echo 'bash /app/setup_linux.sh \$REWARD_ADDRESS' >> /app/start_node.sh && \
+    echo 'if [ ! -d /app/cysic-verifier ]; then echo "Ошибка: директория /app/cysic-verifier не была создана."; exit 1; fi' >> /app/start_node.sh && \
     echo 'cd /app/cysic-verifier && bash start.sh' >> /app/start_node.sh && \
     chmod +x /app/start_node.sh
-
-COPY cysic.env /app/cysic.env
 
 CMD ["/bin/bash", "/app/start_node.sh"]
 EOF
