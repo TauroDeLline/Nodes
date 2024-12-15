@@ -14,7 +14,7 @@ rm -f ubuntu-node-v2.1.0.tar
 cat <<EOF > Dockerfile
 FROM ubuntu:22.04
 
-RUN apt-get update && apt-get install -y bash tar curl sudo
+RUN apt-get update && apt-get install -y bash tar curl sudo iproute2
 WORKDIR /network3
 
 COPY ubuntu-node /network3/ubuntu-node
