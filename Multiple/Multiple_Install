@@ -11,17 +11,21 @@ BANDWIDTH_UPLOAD=1000  # Исходящий трафик (в Mbps)
 BANDWIDTH_DOWNLOAD=1000 # Входящий трафик (в Mbps)
 
 # Удаление существующего контейнера, если он есть
+echo "=== Проверяем существование контейнера $NODE_NAME ==="
 if docker ps -a --format '{{.Names}}' | grep -wq "$NODE_NAME"; then
-    echo "Контейнер $NODE_NAME уже существует. Удаляем..."
+    echo "Контейнер $NODE_NAME найден. Удаляем..."
     docker rm -f $NODE_NAME
+else
+    echo "Контейнер $NODE_NAME не найден. Продолжаем."
 fi
 
 # Создание Dockerfile
+echo "=== Создаем Dockerfile ==="
 cat << 'EOF' > Dockerfile
 # Используем базовый образ Ubuntu 22.04
 FROM ubuntu:22.04
 
-# Установка необходимых пакетов
+# Исправление списка репозиториев и установка необходимых пакетов
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirror.yandex.ru/ubuntu|g' /etc/apt/sources.list && \
     apt-get update && \
     apt-get install -y wget tar libicu-dev locales && \
@@ -38,13 +42,21 @@ ENV LANGUAGE=en_US.UTF-8
 
 # Скачивание клиента Multiple (определяется автоматически)
 ARG ARCH=x64
-RUN mkdir -p /opt/multiple/Tracks && \
+RUN echo "=== Скачиваем клиент Multiple ===" && \
+    mkdir -p /opt/multiple/Tracks /opt/multiple/Config && \
     wget -O /tmp/multiple.tar https://cdn.app.multiple.cc/client/linux/$ARCH/multipleforlinux.tar && \
+    echo "=== Распаковываем клиент ===" && \
     tar -xvf /tmp/multiple.tar -C /opt/multiple && \
+    echo "=== Перемещаем исполняемые файлы ===" && \
     mv /opt/multiple/*/multiple-cli /opt/multiple/multiple-cli 2>/dev/null || true && \
     mv /opt/multiple/*/multiple-node /opt/multiple/multiple-node 2>/dev/null || true && \
+    echo "=== Устанавливаем права доступа ===" && \
     chmod -R 777 /opt/multiple && \
     chmod +x /opt/multiple/multiple-cli /opt/multiple/multiple-node
+
+# Проверка прав доступа
+RUN echo "=== Проверяем права доступа на директории ===" && \
+    ls -ld /opt/multiple /opt/multiple/Tracks /opt/multiple/Config
 
 # Настройка PATH
 ENV PATH="/opt/multiple:$PATH"
@@ -59,6 +71,7 @@ EOF
 
 # Определение архитектуры и сборка образа
 ARCH=$(uname -m)
+echo "=== Определяем архитектуру системы: $ARCH ==="
 if [[ "$ARCH" == "x86_64" ]]; then
     ARCH="x64"
 elif [[ "$ARCH" == "aarch64" ]]; then
@@ -68,15 +81,15 @@ else
     exit 1
 fi
 
-echo "Сборка Docker-образа..."
+echo "=== Начинаем сборку Docker-образа ==="
 docker build --build-arg ARCH=$ARCH -t multiple-node .
 
-# Запуск контейнера с именем и параметрами
-echo "Запуск контейнера..."
+# Запуск контейнера
+echo "=== Запускаем контейнер $NODE_NAME ==="
 docker run -d --name $NODE_NAME --restart always multiple-node
 
 # Привязка учетной записи
-echo "Привязка учетной записи..."
+echo "=== Привязка учетной записи ==="
 docker exec -it $NODE_NAME ./multiple-cli bind \
     --bandwidth-download $BANDWIDTH_DOWNLOAD \
     --identifier $IDENTIFIER \
@@ -84,10 +97,11 @@ docker exec -it $NODE_NAME ./multiple-cli bind \
     --storage $STORAGE \
     --bandwidth-upload $BANDWIDTH_UPLOAD
 
-# Проверка прав доступа
-echo "Проверка прав доступа:"
-docker exec -it $NODE_NAME bash -c "ls -ld /opt/multiple /opt/multiple/Tracks"
+# Проверка ICU и прав доступа
+echo "=== Проверка ICU и прав доступа ==="
+docker exec -it $NODE_NAME bash -c "ldconfig -p | grep icu"
+docker exec -it $NODE_NAME bash -c "ls -ld /opt/multiple /opt/multiple/Tracks /opt/multiple/Config"
 
-# Подключение к логам контейнера (можно отключиться Ctrl+C)
-echo "Запущен просмотр логов. Нажмите Ctrl+C для выхода."
+# Просмотр логов
+echo "=== Запущен просмотр логов. Нажмите Ctrl+C для выхода ==="
 docker logs -f $NODE_NAME
