@@ -29,6 +29,8 @@ ARG ARCH=x64
 RUN mkdir -p /opt/multiple && \
     wget -O /tmp/multiple.tar https://cdn.app.multiple.cc/client/linux/$ARCH/multipleforlinux.tar && \
     tar -xvf /tmp/multiple.tar -C /opt/multiple && \
+    mv /opt/multiple/*/multiple-cli /opt/multiple/multiple-cli 2>/dev/null || true && \
+    mv /opt/multiple/*/multiple-node /opt/multiple/multiple-node 2>/dev/null || true && \
     chmod +x /opt/multiple/multiple-cli /opt/multiple/multiple-node
 
 # Настройка PATH
