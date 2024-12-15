@@ -36,6 +36,9 @@ RUN mkdir -p /opt/multiple && \
 # Настройка PATH
 ENV PATH="/opt/multiple:$PATH"
 
+# Включение System.Globalization.Invariant
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+
 # Настройка приглашения bash
 ENV PS1="[Multiple] \\w\\$ "
 
