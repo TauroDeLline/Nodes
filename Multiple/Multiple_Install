@@ -36,7 +36,6 @@ RUN locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8
 
 # Настройка ICU и .NET
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
-ENV DOTNET_DiagnosticPorts=/tmp/dotnet-trace
 ENV LC_ALL=en_US.UTF-8
 ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US.UTF-8
@@ -66,7 +65,7 @@ ENV PATH="/opt/multiple:$PATH"
 
 # Установка точки входа с отладочными параметрами
 WORKDIR /opt/multiple
-ENTRYPOINT ["./multiple-node", "--verbose", "--debug", "--trace"]
+ENTRYPOINT ["./multiple-node", "--verbose", "--debug"]
 EOF
 
 # Определение архитектуры и сборка образа
