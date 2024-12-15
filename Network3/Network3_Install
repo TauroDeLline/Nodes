@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Установка зависимостей
-apt-get update && apt-get install -y wget tar curl sudo docker.io
+# Рабочая директория
+WORKDIR="/root/network3"
 
 # Скачиваем и распаковываем файлы
-mkdir -p /root/network3
-cd /root/network3
+mkdir -p $WORKDIR
+cd $WORKDIR
 wget https://network3.io/ubuntu-node-v2.1.0.tar
 tar -xvf ubuntu-node-v2.1.0.tar
 rm -f ubuntu-node-v2.1.0.tar
@@ -25,19 +25,32 @@ EOF
 # Собираем Docker-образ
 docker build -t network3 .
 
-# Запускаем контейнер
-docker run -d --name Network3 -p 8080:8080 network3
+# Проверяем занятость порта и выбираем первый свободный порт начиная с 8080
+BASE_PORT=8080
+while lsof -i:$BASE_PORT &>/dev/null; do
+  echo "Порт $BASE_PORT занят, проверяем следующий."
+  BASE_PORT=$((BASE_PORT + 1))
+done
+
+# Запускаем контейнер с найденным свободным портом
+echo "Используем порт $BASE_PORT для ноды."
+docker run -d --name Network3 -p $BASE_PORT:8080 network3
 
 # Ожидаем запуска ноды
 sleep 10
 
-# Получаем ключ API и ссылку из логов
-API_KEY=\$(docker logs Network3 2>/dev/null | grep -oP 'API Key: \\K.*')
-NODE_LINK=\$(docker logs Network3 2>/dev/null | grep -oP 'https://.*:8080')
+# Извлекаем ключ API и ссылку
+API_KEY=$(docker logs Network3 2>/dev/null | grep -oP 'API Key: \K.*')
+NODE_LINK="http://$(hostname -I | awk '{print $1}'):$BASE_PORT"
 
-# Выводим API Key и ссылку
-echo "API Key: \$API_KEY"
-echo "Node Link: \$NODE_LINK"
+# Выводим результат
+if [[ -n $API_KEY ]]; then
+  echo "API Key: $API_KEY"
+  echo "Node Link: $NODE_LINK"
+else
+  echo "Не удалось получить ключ API и ссылку. Проверьте логи контейнера."
+fi
 
 # Инструкция по дальнейшей работе
-echo -e "\\nДля просмотра логов выполните: docker logs -f Network3"
+echo -e "\nДля просмотра логов выполните: docker logs -f Network3"
+echo "Для подключения к контейнеру выполните: docker exec -it Network3 bash"
