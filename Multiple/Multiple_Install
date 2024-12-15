@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# Запрос уникального идентификатора у пользователя
+read -p "Введите уникальный идентификатор (identifier): " IDENTIFIER
+
+# Фиксированные параметры
+NODE_NAME="Multiple"   # Имя контейнера
+PIN="000000"           # PIN-код
+STORAGE=1              # Размер хранилища (в GB)
+BANDWIDTH_UPLOAD=1000  # Исходящий трафик (в Mbps)
+BANDWIDTH_DOWNLOAD=1000 # Входящий трафик (в Mbps)
+
+# Создание Dockerfile
+cat << 'EOF' > Dockerfile
+# Используем базовый образ Ubuntu 22.04
+FROM ubuntu:22.04
+
+# Установка необходимых пакетов
+RUN apt-get update && apt-get install -y wget tar && apt-get clean
+
+# Скачивание клиента Multiple (определяется автоматически)
+ARG ARCH=x64
+RUN wget -O /tmp/multiple.tar https://cdn.app.multiple.cc/client/linux/$ARCH/multipleforlinux.tar && \
+    tar -xvf /tmp/multiple.tar -C /opt/ && \
+    chmod +x /opt/multiple-cli /opt/multiple-node
+
+# Настройка PATH
+ENV PATH="/opt:$PATH"
+
+# Настройка приглашения bash
+ENV PS1="[Multiple] \\w\\$ "
+
+# Установка точки входа
+WORKDIR /opt
+ENTRYPOINT ["./multiple-node"]
+EOF
+
+# Определение архитектуры и сборка образа
+ARCH=$(uname -m)
+if [[ "$ARCH" == "x86_64" ]]; then
+    ARCH="x64"
+elif [[ "$ARCH" == "aarch64" ]]; then
+    ARCH="arm64"
+else
+    echo "Неподдерживаемая архитектура: $ARCH"
+    exit 1
+fi
+
+echo "Сборка Docker-образа..."
+docker build --build-arg ARCH=$ARCH -t multiple-node .
+
+# Запуск контейнера с именем и параметрами
+echo "Запуск контейнера..."
+docker run -d --name $NODE_NAME --restart always multiple-node
+
+# Привязка учетной записи
+echo "Привязка учетной записи..."
+docker exec -it $NODE_NAME ./multiple-cli bind \
+    --bandwidth-download $BANDWIDTH_DOWNLOAD \
+    --identifier $IDENTIFIER \
+    --pin $PIN \
+    --storage $STORAGE \
+    --bandwidth-upload $BANDWIDTH_UPLOAD
+
+# Подключение к логам контейнера (можно отключиться Ctrl+C)
+echo "Запущен просмотр логов. Нажмите Ctrl+C для выхода."
+docker logs -f $NODE_NAME
