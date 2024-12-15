@@ -51,8 +51,7 @@ RUN echo "=== Скачиваем клиент Multiple ===" && \
     mv /opt/multiple/*/multiple-cli /opt/multiple/multiple-cli 2>/dev/null || true && \
     mv /opt/multiple/*/multiple-node /opt/multiple/multiple-node 2>/dev/null || true && \
     echo "=== Устанавливаем права доступа ===" && \
-    chmod -R 777 /opt/multiple && \
-    chmod +x /opt/multiple/multiple-cli /opt/multiple/multiple-node
+    chmod -R 777 /opt/multiple
 
 # Проверка прав доступа
 RUN echo "=== Проверяем права доступа на директории ===" && \
@@ -82,11 +81,16 @@ else
 fi
 
 echo "=== Начинаем сборку Docker-образа ==="
-docker build --build-arg ARCH=$ARCH -t multiple-node .
+docker build --no-cache --build-arg ARCH=$ARCH -t multiple-node .
 
 # Запуск контейнера
 echo "=== Запускаем контейнер $NODE_NAME ==="
 docker run -d --name $NODE_NAME --restart always multiple-node
+
+# Проверка ICU и директорий
+echo "=== Проверка ICU и прав доступа в контейнере ==="
+docker exec -it $NODE_NAME bash -c "ldconfig -p | grep icu"
+docker exec -it $NODE_NAME bash -c "ls -ld /opt/multiple /opt/multiple/Tracks /opt/multiple/Config"
 
 # Привязка учетной записи
 echo "=== Привязка учетной записи ==="
@@ -97,11 +101,6 @@ docker exec -it $NODE_NAME ./multiple-cli bind \
     --storage $STORAGE \
     --bandwidth-upload $BANDWIDTH_UPLOAD
 
-# Проверка ICU и прав доступа
-echo "=== Проверка ICU и прав доступа ==="
-docker exec -it $NODE_NAME bash -c "ldconfig -p | grep icu"
-docker exec -it $NODE_NAME bash -c "ls -ld /opt/multiple /opt/multiple/Tracks /opt/multiple/Config"
-
-# Просмотр логов
+# Подключение к логам
 echo "=== Запущен просмотр логов. Нажмите Ctrl+C для выхода ==="
 docker logs -f $NODE_NAME
