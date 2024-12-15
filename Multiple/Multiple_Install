@@ -10,6 +10,12 @@ STORAGE=1              # Размер хранилища (в GB)
 BANDWIDTH_UPLOAD=1000  # Исходящий трафик (в Mbps)
 BANDWIDTH_DOWNLOAD=1000 # Входящий трафик (в Mbps)
 
+# Удаление существующего контейнера, если он есть
+if docker ps -a --format '{{.Names}}' | grep -wq "$NODE_NAME"; then
+    echo "Контейнер $NODE_NAME уже существует. Удаляем..."
+    docker rm -f $NODE_NAME
+fi
+
 # Создание Dockerfile
 cat << 'EOF' > Dockerfile
 # Используем базовый образ Ubuntu 22.04
@@ -20,18 +26,19 @@ RUN apt-get update && apt-get install -y wget tar && apt-get clean
 
 # Скачивание клиента Multiple (определяется автоматически)
 ARG ARCH=x64
-RUN wget -O /tmp/multiple.tar https://cdn.app.multiple.cc/client/linux/$ARCH/multipleforlinux.tar && \
-    tar -xvf /tmp/multiple.tar -C /opt/ && \
-    chmod +x /opt/multiple-cli /opt/multiple-node
+RUN mkdir -p /opt/multiple && \
+    wget -O /tmp/multiple.tar https://cdn.app.multiple.cc/client/linux/$ARCH/multipleforlinux.tar && \
+    tar -xvf /tmp/multiple.tar -C /opt/multiple && \
+    chmod +x /opt/multiple/multiple-cli /opt/multiple/multiple-node
 
 # Настройка PATH
-ENV PATH="/opt:$PATH"
+ENV PATH="/opt/multiple:$PATH"
 
 # Настройка приглашения bash
 ENV PS1="[Multiple] \\w\\$ "
 
 # Установка точки входа
-WORKDIR /opt
+WORKDIR /opt/multiple
 ENTRYPOINT ["./multiple-node"]
 EOF
 
