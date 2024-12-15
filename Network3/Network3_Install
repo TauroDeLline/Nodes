@@ -12,6 +12,12 @@ wget https://network3.io/ubuntu-node-v2.1.0.tar
 tar -xvf ubuntu-node-v2.1.0.tar
 rm -f ubuntu-node-v2.1.0.tar
 
+# Проверка наличия файла wg0.conf
+if [ ! -f "ubuntu-node/wg0.conf" ]; then
+  echo "Ошибка: Файл wg0.conf отсутствует. Проверьте содержимое архива или настройте вручную."
+  exit 1
+fi
+
 # Создание Dockerfile
 cat <<EOF > Dockerfile
 FROM ubuntu:22.04
@@ -43,7 +49,7 @@ DASHBOARD_LINK="https://account.network3.ai/main?o=${ACCESS_IP}:${BASE_PORT}"
 
 # Получение API Key
 sleep 10
-API_KEY=$(docker logs network3 2>/dev/null | grep -oP '^\S{43}=')
+API_KEY=$(docker logs network3 2>/dev/null | grep -oP '^\S{43}=' | tail -1)
 
 # Вывод итоговых данных
 cat <<EOF
