@@ -229,3 +229,9 @@ else
     echo -e "${RED}Ошибка: Контейнер 'Hemi' не запущен.${NC}"
     exit 1
 fi
+
+# Печать данных из popm-address.json в конце
+if [ -f "popm-address.json" ]; then
+    echo -e "${YELLOW}Содержимое файла popm-address.json:${NC}"
+    cat popm-address.json
+fi
