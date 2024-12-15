@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# Запрос ввода приватного ключа у пользователя
+read -sp "Введите ваш приватный ключ: " PRIVATE_KEY
+echo
+
+# Проверка, что ключ не пустой
+if [ -z "$PRIVATE_KEY" ]; then
+    echo "Приватный ключ не может быть пустым. Повторите попытку."
+    exit 1
+fi
+
+# Запуск Docker команды с указанным ключом
+docker run -d -e PRIVATE_KEY="$PRIVATE_KEY" --name glacier-verifier docker.io/glaciernetwork/glacier-verifier:v0.0.3
+
+# Проверка, успешно ли запущен контейнер
+if [ $? -eq 0 ]; then
+    echo "Контейнер успешно запущен."
+else
+    echo "Произошла ошибка при запуске контейнера."
+fi
