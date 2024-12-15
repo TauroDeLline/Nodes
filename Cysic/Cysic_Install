@@ -7,15 +7,20 @@ YELLOW='\033[0;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-# Проверка существующего контейнера
-if docker ps -a --format '{{.Names}}' | grep -q '^Cysic$'; then
-    echo -e "${YELLOW}Контейнер 'Cysic' уже существует. Удалить его для замены? (y/n)${NC}"
-    read REMOVE_EXISTING
-    if [[ "$REMOVE_EXISTING" =~ ^[yY]$ ]]; then
-        echo -e "${GREEN}Останавливаем и удаляем старый контейнер...${NC}"
-        docker stop Cysic && docker rm Cysic
+# Проверка и удаление контейнеров с похожими именами
+EXISTING_CONTAINERS=$(docker ps -a --format '{{.Names}}' | grep -E '^Cysic$|^Cysic_')
+if [[ -n "$EXISTING_CONTAINERS" ]]; then
+    echo -e "${YELLOW}Обнаружены контейнеры с похожими именами:${NC}"
+    echo "$EXISTING_CONTAINERS"
+    echo -e "${YELLOW}Хотите удалить их перед запуском нового контейнера? (y/n)${NC}"
+    read REMOVE_SIMILAR
+    if [[ "$REMOVE_SIMILAR" =~ ^[yY]$ ]]; then
+        for CONTAINER in $EXISTING_CONTAINERS; do
+            echo -e "${GREEN}Останавливаем и удаляем контейнер '$CONTAINER'...${NC}"
+            docker stop "$CONTAINER" && docker rm "$CONTAINER"
+        done
     else
-        echo -e "${RED}Замена отменена. Скрипт завершён.${NC}"
+        echo -e "${RED}Удаление пропущено. Скрипт завершён.${NC}"
         exit 0
     fi
 fi
