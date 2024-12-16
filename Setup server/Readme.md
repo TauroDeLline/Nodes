@@ -9,3 +9,8 @@ Base Container - запрашивает название и создает до�
 ``` bash
 curl -fsSL https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Setup%20server/Base_Container -o Base_Container && chmod +x Base_Container && ./Base_Container
 ```
+Создаем все необходимые папки
+
+``` bash
+mkdir Cysic Elixir Hemi Multiple Network3 Nexus Ocean_Nodes Rivalz
+```
