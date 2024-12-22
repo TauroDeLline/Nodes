@@ -35,7 +35,7 @@ fi
 
 # Создание и запуск контейнера
 echo "Создаем и запускаем контейнер..."
-docker run -d --name $container_name -p $container_port:$container_port \
+docker run -it --name $container_name -p $container_port:$container_port \
   -e TERM=xterm $image_version sh -c "$(curl -fsSL https://get.sonaric.xyz/scripts/install.sh)"
 
 # Проверка запуска контейнера
@@ -47,4 +47,4 @@ else
 fi
 
 # Завершение работы скрипта
-echo "Контейнер $container_name запущен. Для взаимодействия подключитесь вручную."
+echo "Контейнер $container_name запущен. Вы можете работать в нём."
