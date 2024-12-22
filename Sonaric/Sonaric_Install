@@ -6,6 +6,25 @@ container_name="Sonaric"
 # Образ Docker
 image_version="ubuntu:22.04"
 
+# Функция для проверки доступности порта
+check_port() {
+  local port=$1
+  if lsof -i:"$port" >/dev/null 2>&1; then
+    return 1 # Порт занят
+  else
+    return 0 # Порт свободен
+  fi
+}
+
+# Определение свободного порта, начиная с 8080
+container_port=8080
+while ! check_port "$container_port"; do
+  echo "Порт $container_port уже занят. Проверяем следующий..."
+  container_port=$((container_port + 1))
+done
+
+echo "Выбран порт: $container_port"
+
 # Проверка, существует ли контейнер с таким именем
 if [ $(docker ps -a -q -f name="^${container_name}$") ]; then
   echo "Контейнер с именем $container_name уже существует. Удаляем его..."
@@ -16,16 +35,15 @@ fi
 
 # Создание и запуск контейнера
 echo "Создаем и запускаем контейнер..."
-docker run -d --name $container_name $image_version sh -c "$(curl -fsSL https://get.sonaric.xyz/scripts/install.sh)"
+docker run -d --name $container_name -p $container_port:$container_port $image_version sh -c "$(curl -fsSL https://get.sonaric.xyz/scripts/install.sh)"
 
 # Проверка запуска контейнера
 if [ $? -eq 0 ]; then
-  echo "Контейнер $container_name успешно создан и запущен."
+  echo "Контейнер $container_name успешно создан и запущен на порту $container_port."
 else
   echo "Произошла ошибка при создании или запуске контейнера. Проверьте настройки."
   exit 1
 fi
 
-# Вывод логов контейнера
-echo "Отображение логов контейнера (нажмите Ctrl+C для выхода):"
-docker logs -f $container_name
+# Завершение работы скрипта
+echo "Контейнер $container_name запущен. Для взаимодействия подключитесь вручную."
