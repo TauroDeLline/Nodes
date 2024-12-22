@@ -37,11 +37,16 @@ fi
 echo "Создаем и запускаем контейнер..."
 docker run --rm -it --name $container_name -p $container_port:$container_port \
   -e TERM=xterm $image_version sh -c "set -x && DEBIAN_FRONTEND=noninteractive apt-get update && \
-  DEBIAN_FRONTEND=noninteractive apt-get install -y apt-utils && \
+  DEBIAN_FRONTEND=noninteractive apt-get install -y apt-utils curl wget gnupg && \
   dpkg --configure -a && \
-  apt-get clean && rm -rf /var/lib/apt/lists/* && \
-  DEBIAN_FRONTEND=noninteractive apt-get install -y curl wget gnupg && \
-  $(curl -fsSL https://get.sonaric.xyz/scripts/install.sh)"
+  apt-get clean && \
+  $(curl -fsSL https://get.sonaric.xyz/scripts/install.sh) && \
+  echo 'Checking sonaricd status...' && \
+  ls -la /var/lib/sonaricd/ && \
+  ps aux | grep sonaricd && \
+  sonaricd start || echo 'Failed to start sonaricd' && \
+  sleep 5 && \
+  echo 'Sonaric setup complete.'"
 
 # Завершение работы скрипта
 echo "Контейнер $container_name завершил работу."
