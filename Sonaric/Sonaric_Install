@@ -77,20 +77,15 @@ COPY automation.exp /root/automation.exp
 # Установка Sonaric через Expect и сохранение лога
 RUN chmod +x /root/install.sh /root/automation.exp && \
     script -q -c "/usr/bin/expect /root/automation.exp" /root/install_log.txt || \
-    (echo "Ошибка во время выполнения install.sh. Логи:"); cat /root/install_log.txt
+    (echo "Ошибка во время выполнения install.sh. Проверьте /root/install_log.txt"); exit 1
 
-# Диагностика путей установки
-RUN echo "Ищем пути установки sonaric..." && \
-    find / -name "sonaric" > /root/sonaric_path.log && \
-    cat /root/sonaric_path.log || echo "sonaric не найден. Проверьте install_log.txt."
-
-# Установка переменной окружения для порта
+# Переменная окружения для порта
 ENV NODE_PORT=8080
 
 # Открытие порта
 EXPOSE 8080
 
-# Команда запуска ноды
+# Запуск bash для отладки
 CMD ["/bin/bash"]
 EOL
 
@@ -166,7 +161,7 @@ docker-compose run --rm sonaric bash
 # Проверка состояния контейнера
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}Контейнер $CONTAINER_NAME успешно запущен для отладки.${NC}"
-    echo -e "${YELLOW}Проверьте содержимое /root/install_log.txt и /root/sonaric_path.log для диагностики.${NC}"
+    echo -e "${YELLOW}Проверьте содержимое /root/install_log.txt для диагностики.${NC}"
 else
     echo -e "${RED}Ошибка при запуске контейнера.${NC}"
     exit 1
