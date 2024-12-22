@@ -26,18 +26,18 @@ done
 echo "Выбран порт: $container_port"
 
 # Проверка, существует ли контейнер с таким именем
-if [ $(docker ps -a -q -f name="^${container_name}$") ]; then
-  echo "Контейнер с именем $container_name уже существует. Удаляем его..."
+if docker ps -a -q -f name="^${container_name}$" >/dev/null; then
+  echo "Контейнер с именем $container_name уже существует. Перезапускаем его..."
   docker stop $container_name >/dev/null 2>&1
   docker rm $container_name >/dev/null 2>&1
-  echo "Контейнер $container_name удалён."
 fi
 
 # Создание и запуск контейнера
 log_file="/tmp/sonaric_install.log"
 echo "Создаем и запускаем контейнер..."
-docker run --rm -it --name $container_name -p $container_port:$container_port \
-  -e TERM=xterm $image_version sh -c "set -x && DEBIAN_FRONTEND=noninteractive apt-get update && \
+docker run -dit --name $container_name -p $container_port:$container_port \
+  -e TERM=xterm $image_version sh -c "set -x && \
+  DEBIAN_FRONTEND=noninteractive apt-get update && \
   apt-get install -f -y && \
   dpkg --configure -a && \
   DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends apt-utils curl wget gnupg2 && \
@@ -53,12 +53,16 @@ docker run --rm -it --name $container_name -p $container_port:$container_port \
   sleep 5 && \
   echo 'Sonaric setup complete.'"
 
+# Проверка работы контейнера
+if docker ps -q -f name="^${container_name}$" >/dev/null; then
+  echo "Контейнер $container_name успешно запущен."
+else
+  echo "Ошибка: контейнер $container_name не запущен."
+fi
+
 # Лог после завершения
 if [ -f "$log_file" ]; then
   echo "Лог установки сохранен в $log_file."
 else
   echo "Лог установки не найден."
 fi
-
-# Завершение работы скрипта
-echo "Контейнер $container_name завершил работу."
