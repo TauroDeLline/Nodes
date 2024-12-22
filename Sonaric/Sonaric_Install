@@ -77,7 +77,7 @@ COPY automation.exp /root/automation.exp
 # Установка Sonaric через Expect и сохранение полного вывода
 RUN chmod +x /root/install.sh /root/automation.exp && \
     bash -x /root/install.sh > /root/full_install_log.txt 2>&1 || \
-    (echo "Ошибка во время выполнения install.sh. Полный лог в /root/full_install_log.txt."); exit 1
+    (echo "Ошибка во время выполнения install.sh. Полный лог в /root/full_install_log.txt." && exit 1)
 
 # Переменная окружения для порта
 ENV NODE_PORT=8080
