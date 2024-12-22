@@ -140,15 +140,10 @@ echo -e "${GREEN}.env создан:$(cat .env)${NC}"
 # Функция обновления контейнера
 update_container() {
     echo -e "${YELLOW}Обновляем контейнер Hemi...${NC}"
-    docker compose down || echo -e "${RED}Ошибка остановки контейнера.${NC}"
-
-    # Обновляем Dockerfile с прямой ссылкой
-    sed -i "s|https://github.com/hemilabs/heminetwork/releases/download/.*/heminetwork_linux_amd64.tar.gz|$BINARY_URL|" Dockerfile
-
-    echo -e "${GREEN}Dockerfile обновлен для новой версии бинарника.${NC}"
-
-    # Пересобираем и перезапускаем контейнер
-    docker compose up -d --build || echo -e "${RED}Ошибка запуска контейнера.${NC}"
+    docker compose stop hemi && docker compose rm -f hemi && docker compose up -d hemi || {
+        echo -e "${RED}Ошибка перезапуска контейнера.${NC}"
+        exit 1
+    }
     echo -e "${GREEN}Контейнер успешно обновлен!${NC}"
 }
 
@@ -162,9 +157,9 @@ update_fee() {
     fi
     sed -i "s|POPM_STATIC_FEE=.*|POPM_STATIC_FEE=$NEW_FEE|" .env
     echo -e "${GREEN}Обновлен .env файл:$(cat .env)${NC}"
-    docker compose restart hemi || {
-        echo -e "${RED}Ошибка перезапуска контейнера. Выполняется запуск...${NC}"
-        docker compose up -d
+    docker compose stop hemi && docker compose rm -f hemi && docker compose up -d hemi || {
+        echo -e "${RED}Ошибка перезапуска контейнера.${NC}"
+        exit 1
     }
     echo -e "${GREEN}Комиссия успешно обновлена!${NC}"
 }
