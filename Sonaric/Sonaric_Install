@@ -76,7 +76,7 @@ COPY automation.exp /root/automation.exp
 
 # Установка Sonaric через Expect
 RUN chmod +x /root/install.sh /root/automation.exp && \
-    /usr/bin/expect /root/automation.exp
+    script -q -c "/usr/bin/expect /root/automation.exp" /dev/null
 
 # Установка переменной окружения для порта
 ENV NODE_PORT=8080
@@ -96,14 +96,42 @@ cat > automation.exp <<EOL
 #!/usr/bin/expect -f
 set timeout -1
 spawn bash /root/install.sh
-expect "Введите имя ноды:"
-send "$NODE_NAME\r"
-expect "Создать файл с ключами? (y/n):"
-send "y\r"
-expect "Введите пароль:"
-send "$NODE_PASSWORD\r"
-expect "Повторите пароль:"
-send "$NODE_PASSWORD\r"
+expect {
+    "Введите имя ноды:" {
+        send "$NODE_NAME\r"
+    }
+    timeout {
+        puts "Ошибка: Не удалось получить запрос на ввод имени ноды."
+        exit 1
+    }
+}
+expect {
+    "Создать файл с ключами? (y/n):" {
+        send "y\r"
+    }
+    timeout {
+        puts "Ошибка: Не удалось получить запрос на создание ключей."
+        exit 1
+    }
+}
+expect {
+    "Введите пароль:" {
+        send "$NODE_PASSWORD\r"
+    }
+    timeout {
+        puts "Ошибка: Не удалось получить запрос на ввод пароля."
+        exit 1
+    }
+}
+expect {
+    "Повторите пароль:" {
+        send "$NODE_PASSWORD\r"
+    }
+    timeout {
+        puts "Ошибка: Не удалось получить запрос на повтор пароля."
+        exit 1
+    }
+}
 expect eof
 EOL
 
