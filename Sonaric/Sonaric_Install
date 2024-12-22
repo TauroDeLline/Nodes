@@ -17,22 +17,42 @@ find_free_port() {
     echo $port
 }
 
-# Запрос параметров у пользователя
-read -p "Введите имя контейнера (по умолчанию sonaric-node): " CONTAINER_NAME
-CONTAINER_NAME=${CONTAINER_NAME:-sonaric-node}
+# Имя контейнера
+CONTAINER_NAME="Sonaric"
 
 DEFAULT_PORT=8080
 NODE_PORT=$(find_free_port $DEFAULT_PORT)
 
-read -p "Введите версию Docker-образа (по умолчанию latest): " IMAGE_VERSION
-IMAGE_VERSION=${IMAGE_VERSION:-latest}
+# Создание Dockerfile
+cat > Dockerfile <<EOL
+FROM ubuntu:22.04
+
+# Установка зависимостей
+RUN apt-get update && \
+    apt-get install -y curl git jq build-essential gcc unzip wget lz4 && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Установка Sonaric
+RUN curl -fsSL http://get.sonaric.xyz/scripts/install.sh | bash
+
+# Установка переменной окружения для порта
+ENV NODE_PORT=8080
+
+# Открытие порта
+EXPOSE 8080
+
+# Команда запуска ноды
+CMD ["sonaric", "start"]
+EOL
 
 # Создание docker-compose.yml
 cat > docker-compose.yml <<EOL
 version: '3.8'
 services:
   $CONTAINER_NAME:
-    image: sonaric/node:$IMAGE_VERSION
+    build: .
     container_name: $CONTAINER_NAME
     ports:
       - "$NODE_PORT:8080"
@@ -40,6 +60,10 @@ services:
       - NODE_PORT=$NODE_PORT
     restart: unless-stopped
 EOL
+
+# Сборка контейнера
+echo -e "${BLUE}Собираем Docker-образ...${NC}"
+docker-compose build
 
 # Запуск контейнера
 echo -e "${BLUE}Запускаем контейнер...${NC}"
