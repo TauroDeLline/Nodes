@@ -36,7 +36,10 @@ fi
 # Создание и запуск контейнера
 echo "Создаем и запускаем контейнер..."
 docker run --rm -it --name $container_name -p $container_port:$container_port \
-  -e TERM=xterm $image_version sh -c "apt-get update && apt-get install -y apt-utils && $(curl -fsSL https://get.sonaric.xyz/scripts/install.sh)"
+  -e TERM=xterm $image_version sh -c "DEBIAN_FRONTEND=noninteractive apt-get update && \
+  DEBIAN_FRONTEND=noninteractive apt-get install -y apt-utils && \
+  DEBIAN_FRONTEND=noninteractive apt-get install -y curl wget gnupg && \
+  $(curl -fsSL https://get.sonaric.xyz/scripts/install.sh)"
 
 # Завершение работы скрипта
 echo "Контейнер $container_name завершил работу."
