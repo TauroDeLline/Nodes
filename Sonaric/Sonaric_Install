@@ -35,16 +35,8 @@ fi
 
 # Создание и запуск контейнера
 echo "Создаем и запускаем контейнер..."
-docker run -it --name $container_name -p $container_port:$container_port \
+docker run --rm -it --name $container_name -p $container_port:$container_port \
   -e TERM=xterm $image_version sh -c "$(curl -fsSL https://get.sonaric.xyz/scripts/install.sh)"
 
-# Проверка запуска контейнера
-if [ $? -eq 0 ]; then
-  echo "Контейнер $container_name успешно создан и запущен на порту $container_port."
-else
-  echo "Произошла ошибка при создании или запуске контейнера. Проверьте настройки."
-  exit 1
-fi
-
 # Завершение работы скрипта
-echo "Контейнер $container_name запущен. Вы можете работать в нём."
+echo "Контейнер $container_name завершил работу."
