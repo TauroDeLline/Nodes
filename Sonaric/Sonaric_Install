@@ -60,6 +60,7 @@ FROM ubuntu:22.04
 
 # Установка зависимостей
 ENV DEBIAN_FRONTEND=noninteractive
+ENV TERM=dumb
 RUN apt-get update && \
     apt-get install -y tzdata curl git jq build-essential gcc unzip wget lz4 expect && \
     ln -fs /usr/share/zoneinfo/Etc/UTC /etc/localtime && \
