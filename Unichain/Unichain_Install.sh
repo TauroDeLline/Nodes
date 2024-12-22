@@ -40,6 +40,13 @@ fi
 
 cd "$REPO_DIR/Unichain" || { echo -e "${RED}Ошибка: не удалось перейти в директорию $REPO_DIR/Unichain.${NC}"; exit 1; }
 
+# Проверка файла docker-compose.yml
+DOCKER_COMPOSE_FILE="docker-compose.yml"
+if [ ! -f "$DOCKER_COMPOSE_FILE" ]; then
+    echo -e "${RED}Ошибка: файл $DOCKER_COMPOSE_FILE не найден.${NC}"
+    exit 1
+fi
+
 # Настройка .env.sepolia
 ENV_FILE=".env.sepolia"
 if [ -f "$ENV_FILE" ]; then
@@ -58,6 +65,8 @@ mkdir -p "$REPO_DIR/Unichain/shared"
 if [ ! -f "$JWT_FILE" ]; then
     echo -e "${BLUE}Создаем JWT файл...${NC}"
     openssl rand -hex 32 > "$JWT_FILE"
+else
+    echo -e "${BLUE}JWT файл уже существует. Пропускаем...${NC}"
 fi
 
 # Проверка доступности портов и настройка docker-compose.yml
@@ -83,8 +92,8 @@ while [ "$(check_port $P2P_PORT)" = "false" ]; do
     P2P_PORT=$((P2P_PORT + 1))
 done
 
-sed -i "s|8545|$RPC_PORT|g" docker-compose.yml
-sed -i "s|30303|$P2P_PORT|g" docker-compose.yml
+sed -i "s|8546|$RPC_PORT|g" "$DOCKER_COMPOSE_FILE"
+sed -i "s|30304|$P2P_PORT|g" "$DOCKER_COMPOSE_FILE"
 
 # Запуск контейнеров
 echo -e "${BLUE}Запускаем контейнеры...${NC}"
