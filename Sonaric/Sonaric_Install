@@ -74,10 +74,10 @@ WORKDIR /root
 COPY install.sh /root/install.sh
 COPY automation.exp /root/automation.exp
 
-# Установка Sonaric через Expect и сохранение лога
+# Установка Sonaric через Expect и сохранение полного вывода
 RUN chmod +x /root/install.sh /root/automation.exp && \
-    script -q -c "/usr/bin/expect /root/automation.exp" /root/install_log.txt || \
-    (echo "Ошибка во время выполнения install.sh. Проверьте /root/install_log.txt"); exit 1
+    bash -x /root/install.sh > /root/full_install_log.txt 2>&1 || \
+    (echo "Ошибка во время выполнения install.sh. Полный лог в /root/full_install_log.txt."); exit 1
 
 # Переменная окружения для порта
 ENV NODE_PORT=8080
@@ -161,7 +161,7 @@ docker-compose run --rm sonaric bash
 # Проверка состояния контейнера
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}Контейнер $CONTAINER_NAME успешно запущен для отладки.${NC}"
-    echo -e "${YELLOW}Проверьте содержимое /root/install_log.txt для диагностики.${NC}"
+    echo -e "${YELLOW}Проверьте содержимое /root/full_install_log.txt для диагностики.${NC}"
 else
     echo -e "${RED}Ошибка при запуске контейнера.${NC}"
     exit 1
