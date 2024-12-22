@@ -51,7 +51,7 @@ services:
       - "$container_port:$container_port"
     environment:
       - PS1="[\u@$container_name \W]\$ "
-    command: sh -c "$(curl -fsSL https://get.sonaric.xyz/scripts/install.sh)"
+    command: sh -c \"\$(curl -fsSL https://get.sonaric.xyz/scripts/install.sh)\"
 EOF
 
 # Запуск контейнера
