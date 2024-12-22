@@ -45,21 +45,35 @@ case $ACTION in
         ;;
 esac
 
-# Ввод переменных от пользователя
-read -p "Введите приватный ключ (оставьте пустым для генерации нового) (POPM_BTC_PRIVKEY): " PRIV_KEY
-read -p "Укажите желаемый размер комиссии (минимум 50) (POPM_STATIC_FEE): " FEE
-
-# Проверка минимального значения комиссии
-if [ "$FEE" -lt 50 ]; then
-    echo -e "${RED}Ошибка: комиссия должна быть не меньше 50!${NC}"
-    exit 1
-fi
-
 # Прямая ссылка на бинарник
 BINARY_URL="https://github.com/hemilabs/heminetwork/releases/download/v0.8.0/heminetwork_v0.8.0_linux_amd64.tar.gz"
 
+# Ввод переменных от пользователя только для установки контейнера
+if [ "$ACTION" == "1" ]; then
+    read -p "Введите приватный ключ (оставьте пустым для генерации нового) (POPM_BTC_PRIVKEY): " PRIV_KEY
+    read -p "Укажите желаемый размер комиссии (минимум 50) (POPM_STATIC_FEE): " FEE
+
+    # Проверка минимального значения комиссии
+    if [ "$FEE" -lt 50 ]; then
+        echo -e "${RED}Ошибка: комиссия должна быть не меньше 50!${NC}"
+        exit 1
+    fi
+else
+    # Если действие не установка, загружаем текущий приватный ключ и комиссию из .env
+    if [ -f ".env" ]; then
+        PRIV_KEY=$(grep "POPM_BTC_PRIVKEY" .env | cut -d '=' -f2)
+        FEE=$(grep "POPM_STATIC_FEE" .env | cut -d '=' -f2)
+        echo -e "${GREEN}Используется текущий приватный ключ и комиссия из .env: ${NC}"
+        echo -e "Приватный ключ: $PRIV_KEY"
+        echo -e "Комиссия: $FEE"
+    else
+        echo -e "${RED}Ошибка: файл .env не найден. Пожалуйста, выполните установку контейнера.${NC}"
+        exit 1
+    fi
+fi
+
 # Если приватный ключ не указан, создаем новый внутри контейнера
-if [ -z "$PRIV_KEY" ]; then
+if [ "$ACTION" == "1" ] && [ -z "$PRIV_KEY" ]; then
     echo -e "${YELLOW}Приватный ключ не указан. Генерация нового ключа...${NC}"
 
     # Подготовка Dockerfile для генерации ключа
@@ -123,55 +137,6 @@ EOT
 
 echo -e "${GREEN}.env создан:$(cat .env)${NC}"
 
-# Создаем Dockerfile
-echo -e "${YELLOW}Создаем Dockerfile...${NC}"
-cat <<EOT > Dockerfile
-# Используем базовый образ
-FROM ubuntu:22.04
-
-# Устанавливаем необходимые пакеты
-RUN apt-get update && apt-get install -y \
-    wget tar bash jq && \
-    rm -rf /var/lib/apt/lists/*
-
-# Задаем рабочую директорию
-WORKDIR /app
-
-# Загружаем и устанавливаем бинарный файл Hemi
-RUN wget -O heminetwork_linux_amd64.tar.gz "$BINARY_URL" && \
-    tar --strip-components=1 -xzvf heminetwork_linux_amd64.tar.gz && \
-    rm heminetwork_linux_amd64.tar.gz
-
-# Устанавливаем пользовательский PS1 для bash
-ENV PS1="[Hemi] \w\$ "
-
-# Определяем команду запуска
-CMD ["/app/popmd"]
-EOT
-
-echo -e "${GREEN}Dockerfile создан.${NC}"
-
-# Создаем docker-compose.yml
-echo -e "${YELLOW}Создаем docker-compose.yml...${NC}"
-cat <<EOT > docker-compose.yml
-version: '3.8'
-
-services:
-  hemi:
-    build: .
-    container_name: Hemi
-    restart: always
-    env_file:
-      - .env
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-EOT
-
-echo -e "${GREEN}docker-compose.yml создан.${NC}"
-
 # Функция обновления контейнера
 update_container() {
     echo -e "${YELLOW}Обновляем контейнер Hemi...${NC}"
@@ -197,7 +162,10 @@ update_fee() {
     fi
     sed -i "s|POPM_STATIC_FEE=.*|POPM_STATIC_FEE=$NEW_FEE|" .env
     echo -e "${GREEN}Обновлен .env файл:$(cat .env)${NC}"
-    docker compose restart Hemi || echo -e "${RED}Ошибка перезапуска контейнера.${NC}"
+    docker compose restart hemi || {
+        echo -e "${RED}Ошибка перезапуска контейнера. Выполняется запуск...${NC}"
+        docker compose up -d
+    }
     echo -e "${GREEN}Комиссия успешно обновлена!${NC}"
 }
 
