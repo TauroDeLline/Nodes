@@ -43,7 +43,7 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TERM=dumb
 RUN apt-get update && \
-    apt-get install -y tzdata curl git jq build-essential gcc unzip wget lz4 expect && \
+    apt-get install -y tzdata curl git jq build-essential gcc unzip wget lz4 && \
     ln -fs /usr/share/zoneinfo/Etc/UTC /etc/localtime && \
     dpkg-reconfigure --frontend noninteractive tzdata && \
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
@@ -53,11 +53,6 @@ RUN apt-get update && \
 # Копируем установочный скрипт
 WORKDIR /root
 COPY install.sh /root/install.sh
-COPY automation.exp /root/automation.exp
-
-# Установка Sonaric через Expect
-RUN chmod +x /root/install.sh /root/automation.exp && \
-    /bin/bash /root/install.sh
 
 # Переменная окружения для порта
 ENV NODE_PORT=8080
@@ -65,7 +60,7 @@ ENV NODE_PORT=8080
 # Открытие порта
 EXPOSE 8080
 
-# Запуск bash для отладки
+# Запуск bash для ручной настройки
 CMD ["/bin/bash"]
 EOL
 
@@ -83,6 +78,7 @@ services:
     ports:
       - "$NODE_PORT:8080"
     restart: unless-stopped
+    tty: true
 EOL
 
 # Сборка контейнера
@@ -96,7 +92,7 @@ docker-compose up -d
 # Проверка состояния контейнера
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}Контейнер $CONTAINER_NAME успешно запущен.${NC}"
-    echo -e "${YELLOW}Используйте команду 'docker logs -f $CONTAINER_NAME' для просмотра логов.${NC}"
+    echo -e "${YELLOW}Используйте команду 'docker exec -it $CONTAINER_NAME bash' для входа в контейнер.${NC}"
 else
     echo -e "${RED}Ошибка при запуске контейнера.${NC}"
     exit 1
