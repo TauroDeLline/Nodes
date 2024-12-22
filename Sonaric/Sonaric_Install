@@ -20,6 +20,37 @@ find_free_port() {
 # Имя контейнера
 CONTAINER_NAME="sonaric"
 
+# Проверка существующего контейнера
+if [ $(docker ps -a --filter "name=^/$CONTAINER_NAME$" --format '{{.Names}}') ]; then
+    read -p "Контейнер $CONTAINER_NAME уже существует. Удалить его? (y/n): " REMOVE_CONTAINER
+    if [[ $REMOVE_CONTAINER == "y" || $REMOVE_CONTAINER == "Y" ]]; then
+        echo -e "${YELLOW}Удаляем существующий контейнер...${NC}"
+        docker rm -f $CONTAINER_NAME
+    else
+        echo -e "${RED}Операция прервана. Удалите контейнер вручную и повторите попытку.${NC}"
+        exit 1
+    fi
+fi
+
+# Запрос имени ноды и пароля
+read -p "Введите имя ноды: " NODE_NAME
+while [ -z "$NODE_NAME" ]; do
+    echo -e "${RED}Имя ноды не может быть пустым. Попробуйте снова.${NC}"
+    read -p "Введите имя ноды: " NODE_NAME
+done
+
+read -sp "Введите пароль для ключей: " NODE_PASSWORD
+echo
+read -sp "Повторите пароль: " CONFIRM_PASSWORD
+echo
+while [ "$NODE_PASSWORD" != "$CONFIRM_PASSWORD" ]; do
+    echo -e "${RED}Пароли не совпадают. Попробуйте снова.${NC}"
+    read -sp "Введите пароль для ключей: " NODE_PASSWORD
+    echo
+    read -sp "Повторите пароль: " CONFIRM_PASSWORD
+    echo
+done
+
 DEFAULT_PORT=8080
 NODE_PORT=$(find_free_port $DEFAULT_PORT)
 
@@ -29,13 +60,19 @@ FROM ubuntu:22.04
 
 # Установка зависимостей
 RUN apt-get update && \
-    apt-get install -y curl git jq build-essential gcc unzip wget lz4 && \
+    apt-get install -y curl git jq build-essential gcc unzip wget lz4 expect && \
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Установка Sonaric
-RUN curl -fsSL http://get.sonaric.xyz/scripts/install.sh | bash
+# Копируем установочный скрипт
+WORKDIR /root
+COPY install.sh /root/install.sh
+COPY automation.exp /root/automation.exp
+
+# Установка Sonaric через Expect
+RUN chmod +x /root/install.sh /root/automation.exp && \
+    /usr/bin/expect /root/automation.exp
 
 # Установка переменной окружения для порта
 ENV NODE_PORT=8080
@@ -45,6 +82,25 @@ EXPOSE 8080
 
 # Команда запуска ноды
 CMD ["sonaric", "start"]
+EOL
+
+# Скачиваем установочный скрипт
+curl -fsSL http://get.sonaric.xyz/scripts/install.sh -o install.sh
+
+# Создаем Expect-скрипт для автоматизации ввода
+cat > automation.exp <<EOL
+#!/usr/bin/expect -f
+set timeout -1
+spawn bash /root/install.sh
+expect "Введите имя ноды:"
+send "$NODE_NAME\r"
+expect "Создать файл с ключами? (y/n):"
+send "y\r"
+expect "Введите пароль:"
+send "$NODE_PASSWORD\r"
+expect "Повторите пароль:"
+send "$NODE_PASSWORD\r"
+expect eof
 EOL
 
 # Создание docker-compose.yml
@@ -78,18 +134,6 @@ else
     echo -e "${RED}Ошибка при запуске контейнера.${NC}"
     exit 1
 fi
-
-# Логика для ввода имени и создания ключей
-read -p "Введите имя ноды: " NODE_NAME
-while [ -z "$NODE_NAME" ]; do
-    echo -e "${RED}Имя ноды не может быть пустым. Попробуйте снова.${NC}"
-    read -p "Введите имя ноды: " NODE_NAME
-done
-
-docker exec -it $CONTAINER_NAME sonaric set-node-name "$NODE_NAME"
-
-echo -e "${BLUE}Создаем файл с ключами...${NC}"
-docker exec -it $CONTAINER_NAME sonaric generate-keys
 
 # Просмотр логов
 read -p "Хотите посмотреть логи контейнера? (y/n): " VIEW_LOGS
