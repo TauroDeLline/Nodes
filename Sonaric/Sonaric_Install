@@ -1,52 +1,99 @@
 #!/bin/bash
 
-# Имя контейнера
-container_name="Sonaric"
+# === Переменные ===
+DOCKERFILE_NAME="Dockerfile.sonaric"
+IMAGE_NAME="sonaricd:latest"
+CONTAINER_NAME="sonaric_node"
+DNS_PORT=1053
+GUI_PORT=44004
 
-# Образ Docker
-image_version="ubuntu:22.04"
-
-# Функция для проверки доступности порта
-check_port() {
-  local port=$1
-  if lsof -i:"$port" >/dev/null 2>&1; then
-    return 1 # Порт занят
-  else
-    return 0 # Порт свободен
-  fi
+# === Функция проверки доступности порта ===
+function find_free_port() {
+    local port=$1
+    while ss -lntu | grep -q ":$port "; do
+        port=$((port + 1))
+    done
+    echo $port
 }
 
-# Определение свободного порта, начиная с 8080
-container_port=8080
-while ! check_port "$container_port"; do
-  echo "Порт $container_port уже занят. Проверяем следующий..."
-  container_port=$((container_port + 1))
-done
+# === Подготовка Dockerfile ===
+cat > $DOCKERFILE_NAME <<EOF
+FROM ubuntu:22.04
 
-echo "Выбран порт: $container_port"
+# Устанавливаем зависимости
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    gnupg \
+    wget && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Проверка, существует ли контейнер с таким именем
-if [ $(docker ps -a -q -f name="^${container_name}$") ]; then
-  echo "Контейнер с именем $container_name уже существует. Удаляем его..."
-  docker stop $container_name >/dev/null 2>&1
-  docker rm $container_name >/dev/null 2>&1
-  echo "Контейнер $container_name удалён."
+# Настраиваем ключи и репозиторий Sonaric
+RUN mkdir -p /etc/apt/keyrings && \
+    curl -fsSL "https://apt.sonaric.xyz/repo-signing-key.pgp" | gpg --dearmor -o /etc/apt/keyrings/sonaric.gpg && \
+    chmod a+r /etc/apt/keyrings/sonaric.gpg && \
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/sonaric.gpg] https://apt.sonaric.xyz stable main" > /etc/apt/sources.list.d/sonaric.list && \
+    apt-get update
+
+# Устанавливаем Sonaric
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y sonaric && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Обходим ошибки в postinst
+RUN sed -i 's/.*groupadd.*//' /var/lib/dpkg/info/sonaricd.postinst && \
+    sed -i 's/.*SUDO_USER not set.*//' /var/lib/dpkg/info/sonaricd.postinst && \
+    dpkg --configure -a
+
+# Создаем директории для логов
+RUN mkdir -p /var/lib/sonaricd/log && touch /var/lib/sonaricd/log/sonaricd.log
+
+# Устанавливаем переменные окружения
+ENV DISCOVER_GPU=false
+
+# Копируем скрипт запуска
+COPY start-sonaric.sh /usr/local/bin/start-sonaric.sh
+RUN chmod +x /usr/local/bin/start-sonaric.sh
+
+# Устанавливаем команду запуска
+CMD ["/usr/local/bin/start-sonaric.sh"]
+EOF
+
+# === Подготовка скрипта запуска ===
+cat > start-sonaric.sh <<EOF
+#!/bin/bash
+
+# Проверяем доступность портов
+DNS_PORT=\$(find_free_port 1053)
+GUI_PORT=\$(find_free_port 44004)
+
+# Запускаем Sonaric
+/usr/bin/sonaricd --dns-port \$DNS_PORT --moby-socket unix:///var/run/docker.sock
+EOF
+
+# === Строим Docker-образ ===
+echo "[INFO] Building Docker image..."
+docker build -f $DOCKERFILE_NAME -t $IMAGE_NAME .
+if [ $? -ne 0 ]; then
+    echo "[ERROR] Docker image build failed."
+    exit 1
 fi
 
-# Создание и запуск контейнера
-echo "Создаем и запускаем контейнер..."
-docker run --rm -it --name $container_name -p $container_port:$container_port \
-  -e TERM=xterm $image_version sh -c "set -x && DEBIAN_FRONTEND=noninteractive apt-get update && \
-  DEBIAN_FRONTEND=noninteractive apt-get install -y apt-utils curl wget gnupg && \
-  dpkg --configure -a && \
-  apt-get clean && \
-  $(curl -fsSL https://get.sonaric.xyz/scripts/install.sh) && \
-  echo 'Checking sonaricd status...' && \
-  ls -la /var/lib/sonaricd/ && \
-  ps aux | grep sonaricd && \
-  sonaricd start || echo 'Failed to start sonaricd' && \
-  sleep 5 && \
-  echo 'Sonaric setup complete.'"
+# === Удаляем старый контейнер, если существует ===
+if docker ps -a --format '{{.Names}}' | grep -Eq "^$CONTAINER_NAME\$"; then
+    echo "[INFO] Stopping and removing existing container..."
+    docker stop $CONTAINER_NAME && docker rm $CONTAINER_NAME
+fi
 
-# Завершение работы скрипта
-echo "Контейнер $container_name завершил работу."
+# === Запускаем новый контейнер ===
+echo "[INFO] Starting container..."
+docker run -d --name $CONTAINER_NAME -p $DNS_PORT:$DNS_PORT/udp -p $GUI_PORT:$GUI_PORT/tcp $IMAGE_NAME
+if [ $? -ne 0 ]; then
+    echo "[ERROR] Failed to start container."
+    exit 1
+fi
+
+# === Вывод информации ===
+echo "[INFO] Container started successfully."
+echo "[INFO] DNS Port: $DNS_PORT"
+echo "[INFO] GUI Port: $GUI_PORT"
