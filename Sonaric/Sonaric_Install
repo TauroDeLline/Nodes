@@ -1,100 +1,72 @@
 #!/bin/bash
 
-# Цвета текста
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # Сброс цвета
-
-# Функция проверки доступности порта
-find_free_port() {
-    local port=$1
-    while lsof -i:$port > /dev/null 2>&1; do
-        ((port++))
-    done
-    echo $port
+# Функция для проверки доступности порта
+check_port() {
+  local port=$1
+  if lsof -i:"$port" >/dev/null 2>&1; then
+    return 1 # Порт занят
+  else
+    return 0 # Порт свободен
+  fi
 }
 
-# Имя контейнера
-CONTAINER_NAME="sonaric"
+# Запрос параметров у пользователя
+read -p "Введите имя контейнера (по умолчанию: sonaric): " container_name
+container_name=${container_name:-sonaric}
 
-# Проверка существующего контейнера
-if [ $(docker ps -a --filter "name=^/$CONTAINER_NAME$" --format '{{.Names}}') ]; then
-    read -p "Контейнер $CONTAINER_NAME уже существует. Удалить его? (y/n): " REMOVE_CONTAINER
-    if [[ $REMOVE_CONTAINER == "y" || $REMOVE_CONTAINER == "Y" ]]; then
-        echo -e "${YELLOW}Удаляем существующий контейнер...${NC}"
-        docker rm -f $CONTAINER_NAME
-    else
-        echo -e "${RED}Операция прервана. Удалите контейнер вручную и повторите попытку.${NC}"
-        exit 1
-    fi
+read -p "Введите образ Docker и его версию (по умолчанию: ubuntu:22.04): " image_version
+image_version=${image_version:-ubuntu:22.04}
+
+read -p "Введите порт для контейнера (по умолчанию: 8080): " container_port
+container_port=${container_port:-8080}
+
+# Проверка, существует ли контейнер с таким именем
+if [ $(docker ps -a -q -f name="^${container_name}$") ]; then
+  read -p "Контейнер с именем $container_name уже существует. Удалить его? (y/n): " remove_container
+  if [[ "$remove_container" =~ ^[Yy]$ ]]; then
+    echo "Останавливаем и удаляем существующий контейнер $container_name..."
+    docker stop $container_name >/dev/null 2>&1
+    docker rm $container_name >/dev/null 2>&1
+    echo "Контейнер $container_name удалён."
+  else
+    echo "Процесс остановлен. Переименуйте контейнер или удалите существующий вручную."
+    exit 1
+  fi
 fi
 
-DEFAULT_PORT=8080
-NODE_PORT=$(find_free_port $DEFAULT_PORT)
-
-# Создание Dockerfile
-cat > Dockerfile <<EOL
-FROM ubuntu:22.04
-
-# Установка зависимостей
-ENV DEBIAN_FRONTEND=noninteractive
-ENV TERM=dumb
-RUN apt-get update && \
-    apt-get install -y tzdata curl git jq build-essential gcc unzip wget lz4 && \
-    ln -fs /usr/share/zoneinfo/Etc/UTC /etc/localtime && \
-    dpkg-reconfigure --frontend noninteractive tzdata && \
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Копируем установочный скрипт
-WORKDIR /root
-COPY install.sh /root/install.sh
-
-# Автоматическая установка без интерактивного ввода
-RUN chmod +x /root/install.sh && \
-    /bin/bash -c "/root/install.sh --unattended || echo \"Ошибка установки\""
-
-# Открытие порта
-EXPOSE 8080
-
-# Запуск bash для ручной настройки
-CMD ["/bin/bash"]
-EOL
-
-# Скачиваем установочный скрипт
-curl -fsSL http://get.sonaric.xyz/scripts/install.sh -o install.sh
-chmod +x install.sh
+# Проверка порта
+while ! check_port "$container_port"; do
+  echo "Порт $container_port уже занят."
+  read -p "Введите другой порт: " container_port
+done
 
 # Создание docker-compose.yml
-cat > docker-compose.yml <<EOL
+cat > docker-compose.yml <<EOF
 version: '3.8'
 services:
-  sonaric:
-    build: .
-    container_name: sonaric
-    ports:
-      - "$NODE_PORT:8080"
+  $container_name:
+    image: $image_version
+    container_name: $container_name
     restart: unless-stopped
-    tty: true
-EOL
-
-# Сборка контейнера
-echo -e "${BLUE}Собираем Docker-образ...${NC}"
-docker-compose build
+    ports:
+      - "$container_port:$container_port"
+    environment:
+      - PS1="[\u@$container_name \W]\$ "
+    command: sh -c "$(curl -fsSL https://get.sonaric.xyz/scripts/install.sh)"
+EOF
 
 # Запуск контейнера
-echo -e "${BLUE}Запускаем контейнер...${NC}"
+echo "Создаем и запускаем контейнер..."
 docker-compose up -d
 
-# Проверка состояния контейнера
+# Проверка запуска контейнера
 if [ $? -eq 0 ]; then
-    echo -e "${GREEN}Контейнер $CONTAINER_NAME успешно запущен.${NC}"
-    echo -e "${YELLOW}Используйте команду 'docker exec -it $CONTAINER_NAME bash' для входа в контейнер.${NC}"
+  echo "Контейнер $container_name успешно создан и запущен."
 else
-    echo -e "${RED}Ошибка при запуске контейнера.${NC}"
-    exit 1
+  echo "Произошла ошибка при создании или запуске контейнера. Проверьте настройки."
+  exit 1
 fi
+
+# Вывод логов контейнера
+echo "Отображение логов контейнера (нажмите Ctrl+C для выхода):"
+docker logs -f $container_name
