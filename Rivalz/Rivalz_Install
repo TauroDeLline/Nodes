@@ -1,64 +1,87 @@
 #!/bin/bash
 
+# Script to deploy the Rivalz node in a Docker container on Ubuntu 22.04
+
+# Exit immediately if a command exits with a non-zero status
 set -e
+
 echo "=== Rivalz Node Deployment Script ==="
 
+# Define variables
 NODE_NAME="Rivalz"
 IMAGE_NAME="rivalz-node-image"
 BUILD_DIR="./rivalz-node"
 
-# Create build directory
+# Create a directory for the Docker build context
 mkdir -p $BUILD_DIR
 
 # Create Dockerfile
 cat > $BUILD_DIR/Dockerfile <<EOF
+# Use Ubuntu 22.04 as the base image
 FROM ubuntu:22.04
 
+# Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y curl gnupg2 supervisor \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs \
-    && npm install -g rivalz-node-cli \
-    && apt-get clean
+# Update and upgrade packages
+RUN apt-get update && apt-get upgrade -y
 
+# Install curl, tmux и другие зависимости
+RUN apt-get install -y curl gnupg2 tmux
+
+# Install Node.js 20.x
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+RUN apt-get install -y nodejs
+
+# Install Rivalz Node CLI globally
+RUN npm install -g rivalz-node-cli
+
+# Create application directory
+RUN mkdir -p /app
+
+# Set working directory
 WORKDIR /app
 
-# Add supervisor configuration
-RUN mkdir -p /etc/supervisor/conf.d
-COPY rivalz.conf /etc/supervisor/conf.d/rivalz.conf
+# Set environment variable for shell prompt
+ENV PS1="[Rivalz] \\w\\$ "
 
-CMD ["supervisord", "-c", "/etc/supervisor/supervisord.conf"]
+# Expose necessary ports (adjust if needed)
+EXPOSE 3000
+
+# Start a command that keeps the container running
+CMD ["tail", "-f", "/dev/null"]
 EOF
 
-# Create supervisor configuration file
-cat > $BUILD_DIR/rivalz.conf <<EOF
-[program:rivalz]
-command=rivalz run
-autostart=true
-autorestart=true
-stdout_logfile=/app/node.log
-stderr_logfile=/app/node.log
-EOF
+echo "Dockerfile создан успешно."
 
-echo "Dockerfile и конфигурация supervisor созданы успешно."
-
-# Build Docker image
+# Build the Docker image
+echo "Сборка Docker образа..."
 docker build -t $IMAGE_NAME $BUILD_DIR
+echo "Docker образ '$IMAGE_NAME' успешно собран."
 
-# Remove existing container if it exists
+# Удалить существующий контейнер с тем же именем, если он существует
 if [ "$(docker ps -aq -f name=^${NODE_NAME}$)" ]; then
+    echo "Удаление существующего контейнера '$NODE_NAME'..."
     docker rm -f $NODE_NAME
 fi
 
-# Run container with restart policy
+# Запуск Docker контейнера без политики перезапуска
+echo "Запуск Docker контейнера '$NODE_NAME'..."
 docker run -d \
     --name $NODE_NAME \
-    --restart unless-stopped \
     -v $BUILD_DIR/app:/app \
     -p 3000:3000 \
     $IMAGE_NAME
 
+echo "Docker контейнер '$NODE_NAME' запущен и работает."
+
+# Автоматическое подключение и запуск rivalz run в tmux сессии
+echo "Запуск 'rivalz run' внутри контейнера в tmux сессии..."
+docker exec -it $NODE_NAME bash -c "tmux new-session -d -s rivalz_session 'rivalz run | tee /app/node.log'"
+
+# Подключение к контейнеру и tmux сессии
+echo "Подключение к контейнеру и tmux сессии..."
+docker exec -it $NODE_NAME bash -c "tmux attach-session -t rivalz_session"
+
 echo "=== Развертывание Завершено ==="
-echo "Просмотр логов. Для выхода нажмите Ctrl+C."
-docker logs -f $NODE_NAME
+echo "Вы можете отсоединиться от просмотра логов без остановки ноды с помощью Ctrl+B, затем D."
