@@ -59,8 +59,11 @@ cat > Dockerfile <<EOL
 FROM ubuntu:22.04
 
 # Установка зависимостей
+ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
-    apt-get install -y curl git jq build-essential gcc unzip wget lz4 expect && \
+    apt-get install -y tzdata curl git jq build-essential gcc unzip wget lz4 expect && \
+    ln -fs /usr/share/zoneinfo/Etc/UTC /etc/localtime && \
+    dpkg-reconfigure --frontend noninteractive tzdata && \
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
