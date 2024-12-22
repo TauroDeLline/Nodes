@@ -30,15 +30,15 @@ if ! command -v docker-compose &> /dev/null; then
 fi
 
 # Клонирование репозитория
-REPO_DIR="$PWD/Unichain"
-if [ ! -d "$REPO_DIR" ]; then
+REPO_DIR="$PWD"
+if [ ! -d "$REPO_DIR/Unichain" ]; then
     echo -e "${BLUE}Клонируем репозиторий Unichain...${NC}"
-    git clone https://github.com/Uniswap/unichain-node "$REPO_DIR"
+    git clone https://github.com/Uniswap/unichain-node "$REPO_DIR/Unichain"
 else
     echo -e "${BLUE}Репозиторий уже клонирован. Пропускаем...${NC}"
 fi
 
-cd "$REPO_DIR" || { echo -e "${RED}Ошибка: не удалось перейти в директорию $REPO_DIR.${NC}"; exit 1; }
+cd "$REPO_DIR/Unichain" || { echo -e "${RED}Ошибка: не удалось перейти в директорию $REPO_DIR/Unichain.${NC}"; exit 1; }
 
 # Настройка .env.sepolia
 ENV_FILE=".env.sepolia"
@@ -46,10 +46,18 @@ if [ -f "$ENV_FILE" ]; then
     echo -e "${BLUE}Настраиваем файл .env.sepolia...${NC}"
     sed -i 's|^OP_NODE_L1_ETH_RPC=.*|OP_NODE_L1_ETH_RPC=https://ethereum-sepolia-rpc.publicnode.com|' "$ENV_FILE"
     sed -i 's|^OP_NODE_L1_BEACON=.*|OP_NODE_L1_BEACON=https://ethereum-sepolia-beacon-api.publicnode.com|' "$ENV_FILE"
-    sed -i 's|^OP_NODE_L2_ENGINE_RPC=.*|OP_NODE_L2_ENGINE_RPC=http://Unichain-execution-client:8545|' "$ENV_FILE"
+    sed -i 's|^OP_NODE_L2_ENGINE_RPC=.*|OP_NODE_L2_ENGINE_RPC=http://Unichain-execution-client:8551|' "$ENV_FILE"
 else
     echo -e "${RED}Ошибка: файл $ENV_FILE не найден.${NC}"
     exit 1
+fi
+
+# Создание JWT-файла
+JWT_FILE="$REPO_DIR/Unichain/shared/jwt.hex"
+mkdir -p "$REPO_DIR/Unichain/shared"
+if [ ! -f "$JWT_FILE" ]; then
+    echo -e "${BLUE}Создаем JWT файл...${NC}"
+    openssl rand -hex 32 > "$JWT_FILE"
 fi
 
 # Проверка доступности портов и настройка docker-compose.yml
