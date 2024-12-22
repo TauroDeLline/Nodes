@@ -54,8 +54,9 @@ RUN apt-get update && \
 WORKDIR /root
 COPY install.sh /root/install.sh
 
-# Переменная окружения для порта
-ENV NODE_PORT=8080
+# Автоматическая установка без интерактивного ввода
+RUN chmod +x /root/install.sh && \
+    /bin/bash -c "/root/install.sh --unattended || echo \"Ошибка установки\""
 
 # Открытие порта
 EXPOSE 8080
