@@ -78,6 +78,11 @@ COPY automation.exp /root/automation.exp
 RUN chmod +x /root/install.sh /root/automation.exp && \
     script -q -c "/usr/bin/expect /root/automation.exp" /dev/null
 
+# Проверка установки sonaric
+RUN if ! [ -x "$(command -v sonaric)" ]; then \
+      echo "Ошибка: sonaric не установлен или недоступен." && exit 1; \
+    fi
+
 # Установка переменной окружения для порта
 ENV NODE_PORT=8080
 
@@ -85,7 +90,7 @@ ENV NODE_PORT=8080
 EXPOSE 8080
 
 # Команда запуска ноды
-CMD ["sonaric", "start"]
+CMD ["/usr/local/bin/sonaric", "start"]
 EOL
 
 # Скачиваем установочный скрипт
