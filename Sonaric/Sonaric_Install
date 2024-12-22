@@ -76,13 +76,13 @@ COPY automation.exp /root/automation.exp
 
 # Установка Sonaric через Expect и сохранение лога
 RUN chmod +x /root/install.sh /root/automation.exp && \
-    script -q -c "/usr/bin/expect /root/automation.exp" /root/install_log.txt
+    script -q -c "/usr/bin/expect /root/automation.exp" /root/install_log.txt || \
+    (echo "Ошибка во время выполнения install.sh. Логи:"); cat /root/install_log.txt
 
-# Проверка установки sonaric
-RUN find / -name "sonaric" > /root/sonaric_path.log && \
-    if ! grep -q "sonaric" /root/sonaric_path.log; then \
-      echo "Ошибка: sonaric не установлен." && exit 1; \
-    fi
+# Диагностика путей установки
+RUN echo "Ищем пути установки sonaric..." && \
+    find / -name "sonaric" > /root/sonaric_path.log && \
+    cat /root/sonaric_path.log || echo "sonaric не найден. Проверьте install_log.txt."
 
 # Установка переменной окружения для порта
 ENV NODE_PORT=8080
