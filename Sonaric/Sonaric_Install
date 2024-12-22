@@ -10,15 +10,20 @@ check_port() {
   fi
 }
 
-# Запрос параметров у пользователя
-read -p "Введите имя контейнера (по умолчанию: sonaric): " container_name
-container_name=${container_name:-sonaric}
+# Имя контейнера
+container_name="Sonaric"
 
-read -p "Введите образ Docker и его версию (по умолчанию: ubuntu:22.04): " image_version
-image_version=${image_version:-ubuntu:22.04}
+# Образ Docker
+image_version="ubuntu:22.04"
 
-read -p "Введите порт для контейнера (по умолчанию: 8080): " container_port
-container_port=${container_port:-8080}
+# Определение свободного порта, начиная с 8080
+container_port=8080
+while ! check_port "$container_port"; do
+  echo "Порт $container_port уже занят. Проверяем следующий..."
+  container_port=$((container_port + 1))
+done
+
+echo "Выбран порт: $container_port"
 
 # Проверка, существует ли контейнер с таким именем
 if [ $(docker ps -a -q -f name="^${container_name}$") ]; then
@@ -33,12 +38,6 @@ if [ $(docker ps -a -q -f name="^${container_name}$") ]; then
     exit 1
   fi
 fi
-
-# Проверка порта
-while ! check_port "$container_port"; do
-  echo "Порт $container_port уже занят."
-  read -p "Введите другой порт: " container_port
-done
 
 # Создание docker-compose.yml
 cat > docker-compose.yml <<EOF
