@@ -18,7 +18,7 @@ find_free_port() {
 }
 
 # Имя контейнера
-CONTAINER_NAME="Sonaric"
+CONTAINER_NAME="sonaric"
 
 DEFAULT_PORT=8080
 NODE_PORT=$(find_free_port $DEFAULT_PORT)
@@ -51,9 +51,9 @@ EOL
 cat > docker-compose.yml <<EOL
 version: '3.8'
 services:
-  $CONTAINER_NAME:
+  sonaric:
     build: .
-    container_name: $CONTAINER_NAME
+    container_name: sonaric
     ports:
       - "$NODE_PORT:8080"
     environment:
