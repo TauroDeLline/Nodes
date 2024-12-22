@@ -1,0 +1,74 @@
+#!/bin/bash
+
+# Цвета текста
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # Сброс цвета
+
+# Функция проверки доступности порта
+find_free_port() {
+    local port=$1
+    while lsof -i:$port > /dev/null 2>&1; do
+        ((port++))
+    done
+    echo $port
+}
+
+# Запрос параметров у пользователя
+read -p "Введите имя контейнера (по умолчанию sonaric-node): " CONTAINER_NAME
+CONTAINER_NAME=${CONTAINER_NAME:-sonaric-node}
+
+DEFAULT_PORT=8080
+NODE_PORT=$(find_free_port $DEFAULT_PORT)
+
+read -p "Введите версию Docker-образа (по умолчанию latest): " IMAGE_VERSION
+IMAGE_VERSION=${IMAGE_VERSION:-latest}
+
+# Создание docker-compose.yml
+cat > docker-compose.yml <<EOL
+version: '3.8'
+services:
+  $CONTAINER_NAME:
+    image: sonaric/node:$IMAGE_VERSION
+    container_name: $CONTAINER_NAME
+    ports:
+      - "$NODE_PORT:8080"
+    environment:
+      - NODE_PORT=$NODE_PORT
+    restart: unless-stopped
+EOL
+
+# Запуск контейнера
+echo -e "${BLUE}Запускаем контейнер...${NC}"
+docker-compose up -d
+
+# Проверка состояния контейнера
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}Контейнер $CONTAINER_NAME успешно запущен на порту $NODE_PORT!${NC}"
+    echo -e "${YELLOW}Просмотр логов: docker logs -f $CONTAINER_NAME${NC}"
+    echo -e "${YELLOW}Проверка состояния: docker exec -it $CONTAINER_NAME sonaric node-info${NC}"
+else
+    echo -e "${RED}Ошибка при запуске контейнера.${NC}"
+    exit 1
+fi
+
+# Логика для ввода имени и создания ключей
+read -p "Введите имя ноды: " NODE_NAME
+while [ -z "$NODE_NAME" ]; do
+    echo -e "${RED}Имя ноды не может быть пустым. Попробуйте снова.${NC}"
+    read -p "Введите имя ноды: " NODE_NAME
+done
+
+docker exec -it $CONTAINER_NAME sonaric set-node-name "$NODE_NAME"
+
+echo -e "${BLUE}Создаем файл с ключами...${NC}"
+docker exec -it $CONTAINER_NAME sonaric generate-keys
+
+# Просмотр логов
+read -p "Хотите посмотреть логи контейнера? (y/n): " VIEW_LOGS
+if [[ $VIEW_LOGS == "y" || $VIEW_LOGS == "Y" ]]; then
+    docker logs -f $CONTAINER_NAME
+fi
