@@ -1,68 +1,73 @@
 #!/bin/bash
 
-# Имя контейнера
-container_name="Sonaric"
+# Переменные
+CONTAINER_NAME="sonaricd_node"
+IMAGE_NAME="sonaricd:latest"
+DNS_PORT=1053
+GUI_PORT=44004
+INITIAL_PORT_DNS=1053
+INITIAL_PORT_GUI=44004
+MAX_PORT=65000
 
-# Образ Docker
-image_version="ubuntu:22.04"
-
-# Функция для проверки доступности порта
-check_port() {
-  local port=$1
-  if lsof -i:"$port" >/dev/null 2>&1; then
-    return 1 # Порт занят
-  else
-    return 0 # Порт свободен
-  fi
+# Функция для поиска свободного порта
+find_free_port() {
+    local port=$1
+    while ss -lntu | grep -q ":$port "; do
+        port=$((port + 1))
+        if [ $port -ge $MAX_PORT ]; then
+            echo "Нет доступных портов!" >&2
+            exit 1
+        fi
+    done
+    echo $port
 }
 
-# Определение свободного порта, начиная с 8080
-container_port=8080
-while ! check_port "$container_port"; do
-  echo "Порт $container_port уже занят. Проверяем следующий..."
-  container_port=$((container_port + 1))
-done
-
-echo "Выбран порт: $container_port"
-
-# Проверка, существует ли контейнер с таким именем
-if docker ps -a -q -f name="^${container_name}$" >/dev/null; then
-  echo "Контейнер с именем $container_name уже существует. Перезапускаем его..."
-  docker stop $container_name >/dev/null 2>&1
-  docker rm $container_name >/dev/null 2>&1
+# Проверяем наличие контейнера и удаляем его, если он существует
+if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+    echo "Контейнер ${CONTAINER_NAME} существует. Удаляем..."
+    docker stop ${CONTAINER_NAME} && docker rm ${CONTAINER_NAME}
 fi
 
-# Создание и запуск контейнера
-log_file="/tmp/sonaric_install.log"
-echo "Создаем и запускаем контейнер..."
-docker run -dit --name $container_name -p $container_port:$container_port \
-  -e TERM=xterm $image_version sh -c "set -x && \
-  DEBIAN_FRONTEND=noninteractive apt-get update && \
-  apt-get install -f -y && \
-  dpkg --configure -a && \
-  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends apt-utils curl wget gnupg2 && \
-  apt-get clean && \
-  echo 'Checking environment...' && \
-  ls -la /var/lib/sonaricd/ || echo 'Directory /var/lib/sonaricd does not exist' && \
-  ps aux | grep sonaricd || echo 'sonaricd process not found' && \
-  curl -fsSL https://get.sonaric.xyz/scripts/install.sh | bash -x | tee $log_file && \
-  echo 'Checking sonaricd status after installation...' && \
-  ls -la /var/lib/sonaricd/ && \
-  ps aux | grep sonaricd && \
-  sonaricd start || echo 'Failed to start sonaricd' && \
-  sleep 5 && \
-  echo 'Sonaric setup complete.'"
+# Поиск свободных портов
+DNS_PORT=$(find_free_port $INITIAL_PORT_DNS)
+GUI_PORT=$(find_free_port $INITIAL_PORT_GUI)
 
-# Проверка работы контейнера
-if docker ps -q -f name="^${container_name}$" >/dev/null; then
-  echo "Контейнер $container_name успешно запущен."
-else
-  echo "Ошибка: контейнер $container_name не запущен."
+echo "Используем порты: DNS=$DNS_PORT, GUI=$GUI_PORT"
+
+# Запускаем новый контейнер
+docker run -d \
+    --name ${CONTAINER_NAME} \
+    --restart unless-stopped \
+    -p ${DNS_PORT}:53/udp \
+    -p ${GUI_PORT}:44004/tcp \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    ${IMAGE_NAME}
+
+# Проверяем статус контейнера
+if [ $? -ne 0 ]; then
+    echo "Ошибка запуска контейнера ${CONTAINER_NAME}!"
+    exit 1
 fi
 
-# Лог после завершения
-if [ -f "$log_file" ]; then
-  echo "Лог установки сохранен в $log_file."
-else
-  echo "Лог установки не найден."
-fi
+# Входим в контейнер для выполнения дополнительных действий
+docker exec -it ${CONTAINER_NAME} bash << 'EOF'
+# 1. Комментируем проблемные строки в файле postinst
+sed -i 's/.*groupadd.*//' /var/lib/dpkg/info/sonaricd.postinst
+sed -i 's/.*SUDO_USER not set.*//' /var/lib/dpkg/info/sonaricd.postinst
+
+# 2. Настраиваем и перезапускаем конфигурации
+dpkg --configure -a
+
+# 3. Проверяем доступность GPU (деактивируем проверку)
+export DISCOVER_GPU=false
+
+# 4. Создаем файл логов, если его нет
+touch /var/lib/sonaricd/log/sonaricd.log
+
+# 5. Запускаем sonaricd в фоновом режиме
+nohup /usr/bin/sonaricd --dns-port ${DNS_PORT} --moby-socket unix:///var/run/docker.sock > /dev/null 2>&1 &
+EOF
+
+# Вывод логов контейнера
+echo "Запуск контейнера завершен. Выводим логи:"
+docker logs -f ${CONTAINER_NAME}
