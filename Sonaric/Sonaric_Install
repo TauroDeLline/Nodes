@@ -1,63 +1,22 @@
 #!/bin/bash
 
-# Функция для проверки доступности порта
-check_port() {
-  local port=$1
-  if lsof -i:"$port" >/dev/null 2>&1; then
-    return 1 # Порт занят
-  else
-    return 0 # Порт свободен
-  fi
-}
-
 # Имя контейнера
 container_name="Sonaric"
 
 # Образ Docker
 image_version="ubuntu:22.04"
 
-# Определение свободного порта, начиная с 8080
-container_port=8080
-while ! check_port "$container_port"; do
-  echo "Порт $container_port уже занят. Проверяем следующий..."
-  container_port=$((container_port + 1))
-done
-
-echo "Выбран порт: $container_port"
-
 # Проверка, существует ли контейнер с таким именем
 if [ $(docker ps -a -q -f name="^${container_name}$") ]; then
-  read -p "Контейнер с именем $container_name уже существует. Удалить его? (y/n): " remove_container
-  if [[ "$remove_container" =~ ^[Yy]$ ]]; then
-    echo "Останавливаем и удаляем существующий контейнер $container_name..."
-    docker stop $container_name >/dev/null 2>&1
-    docker rm $container_name >/dev/null 2>&1
-    echo "Контейнер $container_name удалён."
-  else
-    echo "Процесс остановлен. Переименуйте контейнер или удалите существующий вручную."
-    exit 1
-  fi
+  echo "Контейнер с именем $container_name уже существует. Удаляем его..."
+  docker stop $container_name >/dev/null 2>&1
+  docker rm $container_name >/dev/null 2>&1
+  echo "Контейнер $container_name удалён."
 fi
 
-# Создание docker-compose.yml
-cat > docker-compose.yml <<EOF
-version: '3.8'
-services:
-  $container_name:
-    image: $image_version
-    container_name: $container_name
-    restart: unless-stopped
-    ports:
-      - "$container_port:$container_port"
-    environment:
-      - PS1="[\u@$container_name \W]\$ "
-    command: >-
-      sh -c \"\$(curl -fsSL https://get.sonaric.xyz/scripts/install.sh)\"
-EOF
-
-# Запуск контейнера
+# Создание и запуск контейнера
 echo "Создаем и запускаем контейнер..."
-docker-compose up -d
+docker run -d --name $container_name $image_version sh -c "$(curl -fsSL https://get.sonaric.xyz/scripts/install.sh)"
 
 # Проверка запуска контейнера
 if [ $? -eq 0 ]; then
