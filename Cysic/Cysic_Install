@@ -11,7 +11,7 @@ NC='\033[0m'
 CONTAINER_NAME="Cysic"
 IMAGE_NAME="cysic:latest"
 
-# Удаляем старый контейнер, если он существует
+# Проверяем и удаляем существующий контейнер
 if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     echo -e "${YELLOW}Контейнер ${CONTAINER_NAME} уже существует. Удаляем...${NC}"
     docker stop ${CONTAINER_NAME} || true
@@ -24,6 +24,15 @@ echo -e "${YELLOW}Введите ваш reward address (0x...):${NC}"
 read REWARD_ADDRESS
 if [[ ! $REWARD_ADDRESS =~ ^0x[0-9a-fA-F]{40}$ ]]; then
     echo -e "${RED}Адрес имеет неверный формат. Проверьте и попробуйте снова.${NC}"
+    exit 1
+fi
+
+# Проверяем наличие файла ключа
+KEY_FILE="${REWARD_ADDRESS}.key"
+if [[ -f "$KEY_FILE" ]]; then
+    echo -e "${GREEN}Файл ключа найден: $KEY_FILE${NC}"
+else
+    echo -e "${RED}Файл ключа $KEY_FILE не найден. Проверьте путь и попробуйте снова.${NC}"
     exit 1
 fi
 
@@ -61,6 +70,14 @@ docker build -f "${DOCKERFILE_PATH}" -t ${IMAGE_NAME} .
 # Запуск контейнера
 echo -e "${GREEN}Запускаем контейнер '${CONTAINER_NAME}'...${NC}"
 docker run -d --name ${CONTAINER_NAME} --restart unless-stopped ${IMAGE_NAME}
+
+# Копируем файл ключа в контейнер
+echo -e "${GREEN}Копируем файл ключа в контейнер...${NC}"
+docker cp "${KEY_FILE}" "${CONTAINER_NAME}:/root/.cysic/keys/${KEY_FILE}"
+
+# Проверяем наличие файла ключа в контейнере
+echo -e "${GREEN}Проверяем файл ключа в контейнере...${NC}"
+docker exec ${CONTAINER_NAME} ls -l /root/.cysic/keys/
 
 echo -e "${GREEN}Контейнер '${CONTAINER_NAME}' успешно запущен.${NC}"
 echo -e "${GREEN}Просмотрите логи с помощью: docker logs -f ${CONTAINER_NAME}${NC}"
