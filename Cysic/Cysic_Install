@@ -53,7 +53,6 @@ WORKDIR /app
 RUN echo '#!/bin/bash' > /app/start_node.sh && \
     echo 'REWARD_ADDRESS=${REWARD_ADDRESS}' >> /app/start_node.sh && \
     echo 'mkdir -p /root/.cysic/keys' >> /app/start_node.sh && \
-    echo 'if [ ! -f /root/.cysic/keys/$REWARD_ADDRESS.key ]; then echo "Ошибка: ключ отсутствует." >> /app/node.log; exit 1; fi' >> /app/start_node.sh && \
     echo 'curl -L https://github.com/cysic-labs/phase2_libs/releases/download/v1.0.0/setup_linux.sh > /app/setup_linux.sh' >> /app/start_node.sh && \
     echo 'bash /app/setup_linux.sh \$REWARD_ADDRESS' >> /app/start_node.sh && \
     echo 'if [ ! -d /root/cysic-verifier ]; then echo "Ошибка: директория /root/cysic-verifier не создана." >> /app/node.log; exit 1; fi' >> /app/start_node.sh && \
@@ -73,36 +72,27 @@ docker build -f "${DOCKERFILE_PATH}" -t ${IMAGE_NAME} .
 echo -e "${GREEN}Запускаем контейнер '${CONTAINER_NAME}'...${NC}"
 docker run -d --name ${CONTAINER_NAME} --restart unless-stopped ${IMAGE_NAME}
 
-# Ожидание готовности контейнера
-echo -e "${GREEN}Ожидаем, пока контейнер станет готов к работе...${NC}"
+# Ждём контейнер, чтобы убедиться, что он запущен
+echo -e "${GREEN}Проверяем состояние контейнера...${NC}"
 for i in {1..10}; do
-    STATUS=$(docker inspect -f '{{.State.Running}}' ${CONTAINER_NAME} 2>/dev/null || echo "false")
-    if [[ "${STATUS}" == "true" ]]; then
-        echo -e "${GREEN}Контейнер готов.${NC}"
+    if docker ps --filter "name=${CONTAINER_NAME}" --filter "status=running" | grep -q ${CONTAINER_NAME}; then
+        echo -e "${GREEN}Контейнер запущен.${NC}"
         break
     else
-        echo -e "${YELLOW}Контейнер ещё не готов. Пробуем снова...${NC}"
+        echo -e "${YELLOW}Контейнер ещё не запущен. Ожидание...${NC}"
         sleep 2
     fi
 done
 
-# Копируем файл ключа
+# Копируем файл ключа в контейнер
 echo -e "${GREEN}Копируем файл ключа в контейнер...${NC}"
 docker exec ${CONTAINER_NAME} bash -c "mkdir -p /root/.cysic/keys"
-for i in {1..5}; do
-    if docker cp "${KEY_FILE}" "${CONTAINER_NAME}:/root/.cysic/keys/"; then
-        echo -e "${GREEN}Файл ключа успешно скопирован.${NC}"
-        break
-    else
-        echo -e "${YELLOW}Не удалось скопировать ключ. Пробуем ещё раз...${NC}"
-        sleep 3
-    fi
-done
+docker cp "${KEY_FILE}" "${CONTAINER_NAME}:/root/.cysic/keys/"
 
 # Проверяем наличие ключа в контейнере
 echo -e "${GREEN}Проверяем файл ключа в контейнере...${NC}"
 docker exec ${CONTAINER_NAME} ls -l /root/.cysic/keys/
 
-# Проверяем синхронизацию в логах
+# Проверяем логи контейнера
 echo -e "${GREEN}Контейнер '${CONTAINER_NAME}' успешно запущен.${NC}"
 echo -e "${GREEN}Просмотрите логи с помощью: docker logs -f ${CONTAINER_NAME}${NC}"
