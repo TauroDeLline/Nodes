@@ -72,21 +72,13 @@ docker build -f "${DOCKERFILE_PATH}" -t ${IMAGE_NAME} .
 echo -e "${GREEN}Запускаем контейнер '${CONTAINER_NAME}'...${NC}"
 docker run -d --name ${CONTAINER_NAME} --restart unless-stopped ${IMAGE_NAME}
 
-# Ждём контейнер, чтобы убедиться, что он запущен
-echo -e "${GREEN}Проверяем состояние контейнера...${NC}"
-for i in {1..10}; do
-    if docker ps --filter "name=${CONTAINER_NAME}" --filter "status=running" | grep -q ${CONTAINER_NAME}; then
-        echo -e "${GREEN}Контейнер запущен.${NC}"
-        break
-    else
-        echo -e "${YELLOW}Контейнер ещё не запущен. Ожидание...${NC}"
-        sleep 2
-    fi
-done
+# Ждём 10 секунд для инициализации
+echo -e "${YELLOW}Ожидание 10 секунд для инициализации контейнера...${NC}"
+sleep 10
 
 # Копируем файл ключа в контейнер
 echo -e "${GREEN}Копируем файл ключа в контейнер...${NC}"
-docker exec ${CONTAINER_NAME} bash -c "mkdir -p /root/.cysic/keys"
+docker exec ${CONTAINER_NAME} mkdir -p /root/.cysic/keys
 docker cp "${KEY_FILE}" "${CONTAINER_NAME}:/root/.cysic/keys/"
 
 # Проверяем наличие ключа в контейнере
