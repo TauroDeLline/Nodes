@@ -1,7 +1,7 @@
 ## Быстрый запуск
 
 ``` bash
-wget https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Cysic/Cysic_Install && chmod +x Cysic_Install && ./Cysic_Install
+wget --no-cache -q https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Cysic/Cysic_Install && chmod +x Cysic_Install && ./Cysic_Install
 
 ```
 
