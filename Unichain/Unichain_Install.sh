@@ -11,9 +11,9 @@ NC='\033[0m' # Нет цвета (сброс цвета)
 
 # Проверка наличия curl и установка, если не установлен
 if ! command -v curl &> /dev/null; then
-    sudo apt install curl -y
+    echo -e "${BLUE}Устанавливаем curl...${NC}"
+    sudo apt-get install curl -y
 fi
-sleep 1
 
 # Отображаем логотип
 curl -s https://raw.githubusercontent.com/noxuspace/cryptofortochka/main/logo_club.sh | bash
@@ -36,7 +36,7 @@ case $choice in
         # Проверка, установлен ли Docker
         if ! command -v docker &> /dev/null; then
             echo -e "${BLUE}Docker не установлен. Устанавливаем Docker...${NC}"
-            sudo apt install docker.io -y
+            sudo apt-get install docker.io -y
         else
             echo -e "${BLUE}Docker уже установлен. Пропускаем установку.${NC}"
         fi
@@ -50,7 +50,8 @@ case $choice in
             echo -e "${BLUE}Docker Compose уже установлен. Пропускаем установку.${NC}"
         fi
 
-        rm -rf unichain-node/
+        # Удаляем старую папку, если существует
+        rm -rf $HOME/unichain-node/
 
         # Клонируем репозиторий Uniswap Unichain Node
         if [ ! -d "$HOME/unichain-node" ]; then
