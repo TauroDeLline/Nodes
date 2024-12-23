@@ -11,100 +11,120 @@ NC='\033[0m' # Нет цвета (сброс цвета)
 
 # Проверка наличия curl и установка, если не установлен
 if ! command -v curl &> /dev/null; then
-    echo -e "${BLUE}Устанавливаем curl...${NC}"
-    sudo apt update
     sudo apt install curl -y
 fi
 sleep 1
 
-# Установка Docker и Docker Compose
-if ! command -v docker &> /dev/null; then
-    echo -e "${BLUE}Docker не установлен. Устанавливаем Docker...${NC}"
-    sudo apt install docker.io -y
-fi
+# Отображаем логотип
+curl -s https://raw.githubusercontent.com/noxuspace/cryptofortochka/main/logo_club.sh | bash
 
-if ! command -v docker-compose &> /dev/null; then
-    echo -e "${BLUE}Docker Compose не установлен. Устанавливаем Docker Compose...${NC}"
-    sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    sudo chmod +x /usr/local/bin/docker-compose
-fi
+# Меню
+echo -e "${YELLOW}Выберите действие:${NC}"
+echo -e "${CYAN}1) Установка ноды${NC}"
+echo -e "${CYAN}2) Обновление ноды${NC}"
+echo -e "${CYAN}3) Проверка логов${NC}"
+echo -e "${CYAN}4) Проверка статуса работы ноды${NC}"
+echo -e "${CYAN}5) Удаление ноды${NC}"
 
-# Клонирование репозитория
-REPO_DIR="$PWD"
-if [ ! -d "$REPO_DIR/Unichain" ]; then
-    echo -e "${BLUE}Клонируем репозиторий Unichain...${NC}"
-    git clone https://github.com/Uniswap/unichain-node "$REPO_DIR/Unichain"
-else
-    echo -e "${BLUE}Репозиторий уже клонирован. Пропускаем...${NC}"
-fi
+echo -e "${YELLOW}Введите номер:${NC} "
+read choice
 
-cd "$REPO_DIR/Unichain" || { echo -e "${RED}Ошибка: не удалось перейти в директорию $REPO_DIR/Unichain.${NC}"; exit 1; }
+case $choice in
+    1)
+        echo -e "${BLUE}Устанавливаем ноду Unichain...${NC}"
 
-# Проверка файла docker-compose.yml
-DOCKER_COMPOSE_FILE="docker-compose.yml"
-if [ ! -f "$DOCKER_COMPOSE_FILE" ]; then
-    echo -e "${RED}Ошибка: файл $DOCKER_COMPOSE_FILE не найден.${NC}"
-    exit 1
-fi
+        # Проверка, установлен ли Docker
+        if ! command -v docker &> /dev/null; then
+            echo -e "${BLUE}Docker не установлен. Устанавливаем Docker...${NC}"
+            sudo apt install docker.io -y
+        else
+            echo -e "${BLUE}Docker уже установлен. Пропускаем установку.${NC}"
+        fi
 
-# Настройка .env.sepolia
-ENV_FILE=".env.sepolia"
-if [ -f "$ENV_FILE" ]; then
-    echo -e "${BLUE}Настраиваем файл .env.sepolia...${NC}"
-    sed -i 's|^OP_NODE_L1_ETH_RPC=.*|OP_NODE_L1_ETH_RPC=https://ethereum-sepolia-rpc.publicnode.com|' "$ENV_FILE"
-    sed -i 's|^OP_NODE_L1_BEACON=.*|OP_NODE_L1_BEACON=https://ethereum-sepolia-beacon-api.publicnode.com|' "$ENV_FILE"
-    sed -i 's|^OP_NODE_L2_ENGINE_RPC=.*|OP_NODE_L2_ENGINE_RPC=http://Unichain-execution-client:8551|' "$ENV_FILE"
-else
-    echo -e "${RED}Ошибка: файл $ENV_FILE не найден.${NC}"
-    exit 1
-fi
+        # Проверка, установлен ли Docker Compose
+        if ! command -v docker-compose &> /dev/null; then
+            echo -e "${BLUE}Docker Compose не установлен. Устанавливаем Docker Compose...${NC}"
+            sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose
+        else
+            echo -e "${BLUE}Docker Compose уже установлен. Пропускаем установку.${NC}"
+        fi
 
-# Создание JWT-файла
-JWT_FILE="$REPO_DIR/Unichain/shared/jwt.hex"
-mkdir -p "$REPO_DIR/Unichain/shared"
-if [ ! -f "$JWT_FILE" ]; then
-    echo -e "${BLUE}Создаем JWT файл...${NC}"
-    openssl rand -hex 32 > "$JWT_FILE"
-else
-    echo -e "${BLUE}JWT файл уже существует. Пропускаем...${NC}"
-fi
+        rm -rf unichain-node/
 
-# Проверка доступности портов и настройка docker-compose.yml
-function check_port() {
-    local port=$1
-    if ss -tuln | grep -q ":$port"; then
-        echo "false"
-    else
-        echo "true"
-    fi
-}
+        # Клонируем репозиторий Uniswap Unichain Node
+        if [ ! -d "$HOME/unichain-node" ]; then
+            echo -e "${BLUE}Клонируем репозиторий Uniswap Unichain Node...${NC}"
+            git clone https://github.com/Uniswap/unichain-node $HOME/unichain-node
+        else
+            echo -e "${BLUE}Папка unichain-node уже существует. Пропускаем клонирование.${NC}"
+        fi
 
-BASE_RPC_PORT=8545
-BASE_P2P_PORT=30303
-RPC_PORT=$BASE_RPC_PORT
-P2P_PORT=$BASE_P2P_PORT
+        # Переходим в директорию unichain-node
+        cd $HOME/unichain-node || { echo -e "${RED}Не удалось войти в директорию unichain-node. Выход.${NC}"; exit 1; }
 
-while [ "$(check_port $RPC_PORT)" = "false" ]; do
-    RPC_PORT=$((RPC_PORT + 1))
-done
+        # Проверяем, существует ли файл .env.sepolia
+        if [ -f ".env.sepolia" ]; then
+            echo -e "${BLUE}Редактируем файл .env.sepolia...${NC}"
 
-while [ "$(check_port $P2P_PORT)" = "false" ]; do
-    P2P_PORT=$((P2P_PORT + 1))
-done
+            # Меняем значение OP_NODE_L1_ETH_RPC
+            sed -i 's|^OP_NODE_L1_ETH_RPC=.*|OP_NODE_L1_ETH_RPC=https://ethereum-sepolia-rpc.publicnode.com|' .env.sepolia
 
-sed -i "s|8546|$RPC_PORT|g" "$DOCKER_COMPOSE_FILE"
-sed -i "s|30304|$P2P_PORT|g" "$DOCKER_COMPOSE_FILE"
+            # Меняем значение OP_NODE_L1_BEACON
+            sed -i 's|^OP_NODE_L1_BEACON=.*|OP_NODE_L1_BEACON=https://ethereum-sepolia-beacon-api.publicnode.com|' .env.sepolia
 
-# Запуск контейнеров
-echo -e "${BLUE}Запускаем контейнеры...${NC}"
-docker-compose down
-if docker-compose up -d; then
-    echo -e "${GREEN}Контейнеры успешно запущены.${NC}"
-else
-    echo -e "${RED}Ошибка при запуске контейнеров.${NC}"
-    exit 1
-fi
+            echo -e "${BLUE}Файл .env.sepolia успешно обновлен.${NC}"
+        else
+            echo -e "${RED}Файл .env.sepolia не найден. Выход.${NC}"
+            exit 1
+        fi
 
-# Информация о логах
-echo -e "${YELLOW}Для просмотра логов выполните:${NC}"
-echo -e "docker-compose logs -f"
+        # Запуск контейнеров в фоновом режиме
+        echo -e "${BLUE}Запускаем контейнеры с помощью docker-compose...${NC}"
+        docker-compose up -d
+        cd $HOME
+
+        # Заключительный вывод
+        echo -e "${PURPLE}-----------------------------------------------------------------------${NC}"
+        echo -e "${YELLOW}Команда для проверки логов:${NC}"
+        echo "cd unichain-node && docker-compose logs -f"
+        echo -e "${PURPLE}-----------------------------------------------------------------------${NC}"
+        echo -e "${GREEN}CRYPTO FORTOCHKA — вся крипта в одном месте!${NC}"
+        echo -e "${CYAN}Наш Telegram https://t.me/cryptoforto${NC}"
+        sleep 2
+
+        # Проверка логов
+        cd unichain-node && docker-compose logs -f
+        ;;
+    2)
+        echo -e "${BLUE}Обновление ноды Unichain...${NC}"
+        echo -e "${GREEN}Установлена актуальная версия ноды.${NC}"
+        ;;
+    3)
+        echo -e "${BLUE}Проверка логов Unichain...${NC}"
+        cd $HOME/unichain-node || { echo -e "${RED}Не удалось войти в директорию unichain-node. Выход.${NC}"; exit 1; }
+        docker-compose logs -f
+        ;;
+    4)
+        echo -e "${BLUE}Проверка статуса работы ноды Unichain...${NC}"
+        curl -d '{"id":1,"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["latest",false]}' \
+        -H "Content-Type: application/json" http://localhost:8545
+        ;;
+    5)
+        echo -e "${BLUE}Удаление ноды Unichain...${NC}"
+        cd $HOME/unichain-node || { echo -e "${RED}Не удалось войти в директорию unichain-node. Выход.${NC}"; exit 1; }
+        docker-compose down -v
+        cd $HOME
+        rm -rf $HOME/unichain-node
+        echo -e "${GREEN}Нода Unichain успешно удалена!${NC}"
+
+        # Заключительный вывод
+        echo -e "${PURPLE}-----------------------------------------------------------------------${NC}"
+        echo -e "${GREEN}CRYPTO FORTOCHKA — вся крипта в одном месте!${NC}"
+        echo -e "${CYAN}Наш Telegram https://t.me/cryptoforto${NC}"
+        sleep 1
+        ;;
+    *)
+        echo -e "${RED}Неверный выбор. Пожалуйста, введите номер от 1 до 5.${NC}"
+        ;;
+esac
