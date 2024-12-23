@@ -1,119 +1,90 @@
 #!/usr/bin/env bash
 set -e
+
 # Цвета для вывода
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
+RED='\033[0;31m'
 NC='\033[0m'
-# Определяем текущую директорию
-SCRIPT_DIR=$(pwd)
-echo -e "${GREEN}Запуск скрипта в директории: ${SCRIPT_DIR}${NC}"
-# Проверяем наличие контейнера Cysic
-if docker ps -a --format '{{.Names}}' | grep -q '^Cysic$'; then
-    echo -e "${YELLOW}Контейнер Cysic уже существует. Удалить его? (y/n)${NC}"
-    read REMOVE_EXISTING
-    if [[ "$REMOVE_EXISTING" =~ ^[yY]$ ]]; then
-        echo "Останавливаем и удаляем старый контейнер Cysic..."
-        docker stop Cysic || true
-        docker rm Cysic
-        echo -e "${GREEN}Старый контейнер Cysic удалён.${NC}"
-    else
-        echo -e "${YELLOW}Отмена операции.${NC}"
-        exit 0
-    fi
+
+# Имя контейнера и образа
+CONTAINER_NAME="Cysic"
+IMAGE_NAME="cysic:latest"
+
+# Проверяем и удаляем существующий контейнер
+if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+    echo -e "${YELLOW}Контейнер ${CONTAINER_NAME} уже существует. Удаляем...${NC}"
+    docker stop ${CONTAINER_NAME} || true
+    docker rm ${CONTAINER_NAME} || true
+    echo -e "${GREEN}Старый контейнер ${CONTAINER_NAME} удалён.${NC}"
 fi
-# Запрашиваем наличие мнемоники
-echo -e "${YELLOW}У вас уже есть файл мнемоники? (y/n)${NC}"
-read HAS_MNEMONIC
+
 # Запрашиваем reward address
-echo -e "${YELLOW}Введите ваш reward address (формат 0x...):${NC}"
+echo -e "${YELLOW}Введите ваш reward address (0x...):${NC}"
 read REWARD_ADDRESS
 if [[ ! $REWARD_ADDRESS =~ ^0x[0-9a-fA-F]{40}$ ]]; then
-    echo -e "${YELLOW}Адрес имеет неверный формат.${NC}"
+    echo -e "${RED}Адрес имеет неверный формат. Проверьте и попробуйте снова.${NC}"
     exit 1
 fi
-MNEMONIC_FILE="${REWARD_ADDRESS}.key"
-MNEMONIC_PATH="${SCRIPT_DIR}/${MNEMONIC_FILE}"
-# Проверяем наличие файла мнемоники, если он есть
-if [[ "$HAS_MNEMONIC" =~ ^[yY]$ ]]; then
-    if [ ! -f "$MNEMONIC_PATH" ]; then
-        echo -e "${YELLOW}Файл мнемоники ${MNEMONIC_FILE} не найден в ${SCRIPT_DIR}!${NC}"
-        exit 1
-    fi
-    echo -e "${GREEN}Используем существующую мнемонику: ${MNEMONIC_PATH}${NC}"
+
+# Проверяем наличие файла ключа
+KEY_FILE="${REWARD_ADDRESS}.key"
+if [[ -f "$KEY_FILE" ]]; then
+    echo -e "${GREEN}Файл ключа найден: $KEY_FILE${NC}"
 else
-    echo -e "${GREEN}Мнемоника будет сгенерирована в процессе.${NC}"
+    echo -e "${RED}Файл ключа $KEY_FILE не найден. Проверьте путь и попробуйте снова.${NC}"
+    exit 1
 fi
-# Создаём Dockerfile.cysic, если его нет
-DOCKERFILE_PATH="${SCRIPT_DIR}/Dockerfile.cysic"
-echo -e "${GREEN}Создаём Dockerfile.cysic...${NC}"
-cat <<EOF > "$DOCKERFILE_PATH"
+
+# Создаём Dockerfile
+DOCKERFILE_PATH="./Dockerfile.cysic"
+echo -e "${GREEN}Создаём Dockerfile ${DOCKERFILE_PATH}...${NC}"
+cat <<EOF > "${DOCKERFILE_PATH}"
 FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y curl wget nano ca-certificates net-tools iproute2 procps && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-ENV PS1="[Cysic] \w\$ "
+
+# Установка необходимых зависимостей
+RUN apt-get update && apt-get install -y curl wget nano ca-certificates net-tools iproute2 procps && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Рабочая директория
 WORKDIR /app
-RUN touch /app/node.log && chmod 666 /app/node.log
-CMD ["tail", "-f", "/app/node.log"]
+
+# Создаём скрипт запуска
+RUN echo '#!/bin/bash' > /app/start_node.sh && \
+    echo 'REWARD_ADDRESS=${REWARD_ADDRESS}' >> /app/start_node.sh && \
+    echo 'mkdir -p /root/.cysic/keys' >> /app/start_node.sh && \
+    echo 'curl -L https://github.com/cysic-labs/phase2_libs/releases/download/v1.0.0/setup_linux.sh > /app/setup_linux.sh' >> /app/start_node.sh && \
+    echo 'bash /app/setup_linux.sh \$REWARD_ADDRESS' >> /app/start_node.sh && \
+    echo 'if [ ! -d /root/cysic-verifier ]; then echo "Ошибка: директория /root/cysic-verifier не создана." >> /app/node.log; exit 1; fi' >> /app/start_node.sh && \
+    echo 'cd /root/cysic-verifier && bash start.sh >> /app/node.log 2>&1' >> /app/start_node.sh && \
+    echo 'tail -f /app/node.log' >> /app/start_node.sh && \
+    chmod +x /app/start_node.sh
+
+# Автозапуск через CMD
+CMD ["/bin/bash", "/app/start_node.sh"]
 EOF
-# Собираем Docker образ
-echo -e "${GREEN}Собираем Docker образ 'cysic:latest' из Dockerfile.cysic...${NC}"
-docker build -f Dockerfile.cysic -t cysic:latest "$SCRIPT_DIR"
-# Запускаем контейнер Cysic
-echo -e "${GREEN}Запускаем контейнер Cysic...${NC}"
-docker run -d --name Cysic --restart always cysic:latest
-# Проверяем состояние контейнера
-echo -e "${GREEN}Проверяем состояние контейнера...${NC}"
-docker ps -a
-docker logs Cysic || true
-echo "Ждём 5 секунд для инициализации контейнера..."
-sleep 5
-# Копируем мнемонику в контейнер, если она есть
-if [[ "$HAS_MNEMONIC" =~ ^[yY]$ ]]; then
-    echo -e "${GREEN}Копируем мнемонику в контейнер...${NC}"
-    docker exec Cysic bash -c "mkdir -p /root/.cysic/keys"
-    # Попробуем копировать несколько раз, если контейнер не готов
-    for i in {1..5}; do
-        if docker cp "$MNEMONIC_PATH" Cysic:/root/.cysic/keys/; then
-            echo "Мнемоника успешно скопирована."
-            break
-        else
-            echo "Не удалось скопировать мнемонику, контейнер может быть не готов. Пробуем ещё раз..."
-            sleep 3
-        fi
-    done
-else
-    echo "Мнемоники нет, сгенерируем её после запуска ноды."
-fi
-# Выполняем первый шаг (setup_linux.sh)
-echo -e "${GREEN}Выполняем первый шаг (setup_linux.sh) в контейнере... Это может занять время...${NC}"
-docker exec Cysic bash -c "curl -L https://github.com/cysic-labs/phase2_libs/releases/download/v1.0.0/setup_linux.sh > /root/setup_linux.sh && chmod +x /root/setup_linux.sh && /root/setup_linux.sh $REWARD_ADDRESS"
-# Проверяем наличие /root/cysic-verifier
-echo "Проверяем наличие /root/cysic-verifier..."
-docker exec Cysic bash -c "ls -la /root/cysic-verifier || true"
-# Выполняем второй шаг (start.sh)
-echo -e "${GREEN}Выполняем второй шаг (start.sh) в контейнере...${NC}"
-docker exec Cysic bash -c "cd /root/cysic-verifier && bash start.sh >> /app/node.log 2>&1 &"
-echo "Даем время на запуск ноды..."
+
+# Сборка Docker-образа
+echo -e "${GREEN}Собираем Docker-образ '${IMAGE_NAME}'...${NC}"
+docker build -f "${DOCKERFILE_PATH}" -t ${IMAGE_NAME} .
+
+# Запуск контейнера
+echo -e "${GREEN}Запускаем контейнер '${CONTAINER_NAME}'...${NC}"
+docker run -d --name ${CONTAINER_NAME} --restart unless-stopped ${IMAGE_NAME}
+
+# Ждём 10 секунд для инициализации
+echo -e "${YELLOW}Ожидание 10 секунд для инициализации контейнера...${NC}"
 sleep 10
-# Проверяем логи ноды
-echo "Проверяем логи ноды..."
-docker logs Cysic || true
-# Если мнемоники не было, копируем её с контейнера на хост
-if [[ ! "$HAS_MNEMONIC" =~ ^[yY]$ ]]; then
-    echo -e "${GREEN}Копируем сгенерированную мнемонику на хост...${NC}"
-    docker exec Cysic bash -c "ls -la /root/.cysic/keys || true"
-    for i in {1..5}; do
-        if docker cp Cysic:/root/.cysic/keys/$MNEMONIC_FILE "$SCRIPT_DIR/"; then
-            echo "Мнемоника успешно скопирована: ${MNEMONIC_PATH}"
-            break
-        else
-            echo "Не удалось скопировать мнемонику, возможно ещё не создана. Пробуем ещё раз..."
-            sleep 3
-        fi
-    done
-echo -e "${GREEN}Все шаги выполнены.${NC}"
-echo -e "${GREEN}Теперь логи: docker logs -f Cysic${NC}"
-echo -e "${GREEN}Вход внутрь: docker exec -it Cysic bash${NC}"
-echo -e "${GREEN}Мнемоника (если сгенерирована): ${MNEMONIC_PATH}${NC}"
+
+# Копируем файл ключа в контейнер
+echo -e "${GREEN}Копируем файл ключа в контейнер...${NC}"
+docker exec ${CONTAINER_NAME} mkdir -p /root/.cysic/keys
+docker cp "${KEY_FILE}" "${CONTAINER_NAME}:/root/.cysic/keys/"
+
+# Проверяем наличие ключа в контейнере
+echo -e "${GREEN}Проверяем файл ключа в контейнере...${NC}"
+docker exec ${CONTAINER_NAME} ls -l /root/.cysic/keys/
+
+# Проверяем логи контейнера
+echo -e "${GREEN}Контейнер '${CONTAINER_NAME}' успешно запущен.${NC}"
+echo -e "${GREEN}Просмотрите логи с помощью: docker logs -f ${CONTAINER_NAME}${NC}"
