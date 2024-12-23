@@ -9,10 +9,10 @@ echo "Текущее время: $(date)"
 echo "Рабочая директория: $(pwd)"
 echo "=== Начало ==="
 
-# Проверка и удаление контейнера
 CONTAINER_NAME="Cysic"
 REWARD_ADDRESS=""
 
+# Удаление старого контейнера
 if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     echo "Контейнер ${CONTAINER_NAME} уже существует. Удаляем..."
     docker stop ${CONTAINER_NAME} || true
@@ -20,17 +20,14 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     echo "Старый контейнер удалён."
 fi
 
-# Запрос Reward Address
-echo -n "Введите ваш reward address (0x...): "
-read REWARD_ADDRESS
-
+# Ввод Reward Address
+read -p "Введите ваш reward address (0x...): " REWARD_ADDRESS
 if [[ ! $REWARD_ADDRESS =~ ^0x[0-9a-fA-F]{40}$ ]]; then
     echo "Ошибка: Reward Address имеет неверный формат!" >&2
     exit 1
 fi
 
 KEY_FILE="${REWARD_ADDRESS}.key"
-
 if [[ ! -f "$KEY_FILE" ]]; then
     echo "Ошибка: файл ключа $KEY_FILE не найден!" >&2
     exit 1
@@ -42,36 +39,46 @@ fi
 # Создание Dockerfile
 DOCKERFILE="Dockerfile.cysic"
 echo "Создаём Dockerfile $DOCKERFILE..."
-
 cat > $DOCKERFILE <<EOF
 FROM ubuntu:22.04
 
 RUN apt-get update && apt-get install -y curl wget nano ca-certificates net-tools iproute2 procps && apt-get clean
-WORKDIR /app
-CMD ["tail", "-f", "/dev/null"]
+WORKDIR /root
+RUN curl -L https://github.com/cysic-labs/phase2_libs/releases/download/v1.0.0/setup_linux.sh > setup_linux.sh && \
+    chmod +x setup_linux.sh
+CMD ["bash", "-c", "./setup_linux.sh \$REWARD_ADDRESS && cd /root/cysic-verifier && bash start.sh"]
 EOF
 
 echo "Собираем Docker-образ 'cysic:latest'..."
 docker build -t cysic:latest -f $DOCKERFILE .
 
-echo "Запускаем контейнер $CONTAINER_NAME..."
-docker run -d --name $CONTAINER_NAME --restart unless-stopped cysic:latest
-
+# Запуск контейнера
+echo "Запускаем контейнер ${CONTAINER_NAME}..."
+docker run -d --name ${CONTAINER_NAME} --restart unless-stopped cysic:latest
 echo "Ожидание 10 секунд для инициализации контейнера..."
 sleep 10
 
-# Убедитесь, что папка для ключа создана
+# Создание папки для ключа
 echo "Создаём папку для ключа в контейнере..."
-docker exec $CONTAINER_NAME bash -c "mkdir -p /root/.cysic/keys"
+docker exec ${CONTAINER_NAME} bash -c "mkdir -p /root/.cysic/keys"
 
 # Копирование ключа
-echo "Копируем файл ключа $KEY_FILE в контейнер..."
-docker cp "$KEY_FILE" "$CONTAINER_NAME:/root/.cysic/keys/"
+echo "Копируем файл ключа ${KEY_FILE} в контейнер..."
+docker cp "${KEY_FILE}" "${CONTAINER_NAME}:/root/.cysic/keys/"
 
 # Проверка ключа
 echo "Проверяем содержимое ключа в контейнере..."
-docker exec $CONTAINER_NAME ls -l /root/.cysic/keys/
-docker exec $CONTAINER_NAME sha256sum /root/.cysic/keys/$KEY_FILE
+docker exec ${CONTAINER_NAME} ls -l /root/.cysic/keys/
+docker exec ${CONTAINER_NAME} sha256sum /root/.cysic/keys/${KEY_FILE}
 
-echo "Контейнер $CONTAINER_NAME успешно запущен. Просмотрите логи с помощью: docker logs -f $CONTAINER_NAME"
-echo "=== Завершение скрипта ==="
+# Проверка запущенных процессов в контейнере
+echo "Проверяем запущенные процессы в контейнере..."
+docker exec ${CONTAINER_NAME} ps aux
+
+# Логи контейнера
+echo "=== Логи контейнера ==="
+docker logs ${CONTAINER_NAME}
+echo "=== Конец логов контейнера ==="
+
+echo "Контейнер ${CONTAINER_NAME} успешно запущен."
+echo "Просмотрите логи с помощью: docker logs -f ${CONTAINER_NAME}"
