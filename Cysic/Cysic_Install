@@ -72,16 +72,20 @@ docker build -f "${DOCKERFILE_PATH}" -t ${IMAGE_NAME} .
 echo -e "${GREEN}Запускаем контейнер '${CONTAINER_NAME}'...${NC}"
 docker run -d --name ${CONTAINER_NAME} --restart unless-stopped ${IMAGE_NAME}
 
-# Ожидание инициализации контейнера
-echo -e "${YELLOW}Ожидаем инициализацию контейнера...${NC}"
-sleep 5  # Ждём 5 секунд
-
-# Копируем файл ключа в контейнер
+# Проверяем наличие директории и копируем ключ
 echo -e "${GREEN}Копируем файл ключа в контейнер...${NC}"
-docker exec ${CONTAINER_NAME} mkdir -p /root/.cysic/keys
-docker cp "${KEY_FILE}" "${CONTAINER_NAME}:/root/.cysic/keys/${KEY_FILE}"
+docker exec ${CONTAINER_NAME} bash -c "mkdir -p /root/.cysic/keys"
+for i in {1..5}; do
+    if docker cp "${KEY_FILE}" "${CONTAINER_NAME}:/root/.cysic/keys/"; then
+        echo -e "${GREEN}Файл ключа успешно скопирован.${NC}"
+        break
+    else
+        echo -e "${YELLOW}Не удалось скопировать ключ. Пробуем ещё раз...${NC}"
+        sleep 3
+    fi
+done
 
-# Проверяем наличие файла ключа в контейнере
+# Проверяем наличие ключа в контейнере
 echo -e "${GREEN}Проверяем файл ключа в контейнере...${NC}"
 docker exec ${CONTAINER_NAME} ls -l /root/.cysic/keys/
 
