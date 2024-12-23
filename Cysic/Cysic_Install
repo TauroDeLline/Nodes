@@ -72,6 +72,10 @@ docker build -f "${DOCKERFILE_PATH}" -t ${IMAGE_NAME} .
 echo -e "${GREEN}Запускаем контейнер '${CONTAINER_NAME}'...${NC}"
 docker run -d --name ${CONTAINER_NAME} --restart unless-stopped ${IMAGE_NAME}
 
+# Ожидание инициализации контейнера
+echo -e "${YELLOW}Ожидаем инициализацию контейнера...${NC}"
+sleep 5  # Ждём 5 секунд
+
 # Копируем файл ключа в контейнер
 echo -e "${GREEN}Копируем файл ключа в контейнер...${NC}"
 docker exec ${CONTAINER_NAME} mkdir -p /root/.cysic/keys
