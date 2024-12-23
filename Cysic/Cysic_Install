@@ -52,6 +52,7 @@ WORKDIR /app
 # Создаём скрипт запуска
 RUN echo '#!/bin/bash' > /app/start_node.sh && \
     echo 'REWARD_ADDRESS=${REWARD_ADDRESS}' >> /app/start_node.sh && \
+    echo 'mkdir -p /root/.cysic/keys' >> /app/start_node.sh && \
     echo 'curl -L https://github.com/cysic-labs/phase2_libs/releases/download/v1.0.0/setup_linux.sh > /app/setup_linux.sh' >> /app/start_node.sh && \
     echo 'bash /app/setup_linux.sh \$REWARD_ADDRESS' >> /app/start_node.sh && \
     echo 'if [ ! -d /root/cysic-verifier ]; then echo "Ошибка: директория /root/cysic-verifier не создана." >> /app/node.log; exit 1; fi' >> /app/start_node.sh && \
@@ -73,6 +74,7 @@ docker run -d --name ${CONTAINER_NAME} --restart unless-stopped ${IMAGE_NAME}
 
 # Копируем файл ключа в контейнер
 echo -e "${GREEN}Копируем файл ключа в контейнер...${NC}"
+docker exec ${CONTAINER_NAME} mkdir -p /root/.cysic/keys
 docker cp "${KEY_FILE}" "${CONTAINER_NAME}:/root/.cysic/keys/${KEY_FILE}"
 
 # Проверяем наличие файла ключа в контейнере
