@@ -2,17 +2,19 @@
 
 set -e
 
+# Устанавливаем режим бесшумной установки
+export DEBIAN_FRONTEND=noninteractive
+
 # Цвета для вывода
 GREEN='\033[0;32m'
 NC='\033[0m'
 
-export DEBIAN_FRONTEND=noninteractive
+echo -e "${GREEN}Начинаем обновление системы и установку Docker...${NC}"
 
-echo -e "${GREEN}Начинаем установку Docker...${NC}"
-
-# Обновляем систему и устанавливаем зависимости для Docker
+# Обновляем и апгрейдим систему
 sudo apt update -y
-sudo apt full-upgrade -y
+sudo apt full-upgrade -y -o Dpkg::Options::="--force-confnew" -o Dpkg::Options::="--force-confdef"
+sudo apt autoremove -y
 sudo apt install -y --no-install-recommends \
     apt-transport-https \
     ca-certificates \
@@ -20,16 +22,16 @@ sudo apt install -y --no-install-recommends \
     software-properties-common \
     gnupg
 
-# Добавляем официальный ключ Docker
+# Настройка для предотвращения зависаний из-за dbus
+sudo apt install -y dbus
+sudo systemctl mask --now systemd-timesyncd.service
+sudo systemctl mask --now apparmor.service
+
+# Установка Docker
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] \
+https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-# Добавляем репозиторий Docker
-echo \
-"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] \
- https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
- sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-# Устанавливаем Docker
 sudo apt update -y
 sudo apt install -y docker-ce docker-ce-cli containerd.io
 
@@ -37,10 +39,7 @@ sudo apt install -y docker-ce docker-ce-cli containerd.io
 sudo systemctl start docker
 sudo systemctl enable docker
 
-echo -e "${GREEN}Docker установлен успешно!${NC}"
-
-# Устанавливаем Docker Compose
-echo -e "${GREEN}Устанавливаем Docker Compose...${NC}"
+# Установка Docker Compose
 DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep -Po '"tag_name": "\K.*?(?=")')
 sudo curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 sudo chmod +x /usr/local/bin/docker-compose
@@ -48,22 +47,22 @@ sudo chmod +x /usr/local/bin/docker-compose
 # Проверяем установку Docker Compose
 docker-compose --version
 
-echo -e "${GREEN}Docker Compose установлен успешно!${NC}"
+echo -e "${GREEN}Docker и Docker Compose успешно установлены!${NC}"
 
-# Установка node_exporter для мониторинга
+# Установка node_exporter
 echo -e "${GREEN}Устанавливаем node_exporter...${NC}"
 
 # Скачиваем и устанавливаем node_exporter
-cd /tmp && \
+cd /tmp
 wget https://github.com/prometheus/node_exporter/releases/download/v1.2.0/node_exporter-1.2.0.linux-amd64.tar.gz
 tar xvf node_exporter-1.2.0.linux-amd64.tar.gz
 sudo mv node_exporter-1.2.0.linux-amd64/node_exporter /usr/bin/
 rm -rf node_exporter-1.2.0.linux-amd64*
 
-# Создаем systemd-сервис для exporterd
+# Создаём systemd-сервис для node_exporter
 sudo tee /etc/systemd/system/exporterd.service > /dev/null <<EOF
 [Unit]
-Description=node_exporter
+Description=Prometheus Node Exporter
 After=network-online.target
 [Service]
 User=$USER
@@ -75,15 +74,16 @@ LimitNOFILE=65535
 WantedBy=multi-user.target
 EOF
 
-# Запускаем сервис exporterd
+# Запускаем и включаем node_exporter
 sudo systemctl daemon-reload
 sudo systemctl enable exporterd
-sudo systemctl restart exporterd
+sudo systemctl start exporterd
 
 # Открываем порт 9100 для node_exporter
-sudo ufw allow 9100
+sudo ufw allow 9100 || echo "Firewall не установлен, пропускаем настройку портов."
 
 echo -e "${GREEN}node_exporter установлен и запущен!${NC}"
 
-echo -e "${GREEN}Перезагрузка системы...${NC}"
+# Финальное сообщение и перезагрузка
+echo -e "${GREEN}Все операции завершены успешно. Перезагрузка для завершения обновлений...${NC}"
 sudo reboot
