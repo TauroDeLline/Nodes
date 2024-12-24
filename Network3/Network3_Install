@@ -1,67 +1,128 @@
 #!/bin/bash
 
-# Установка зависимостей и подготовка окружения
-apt-get update && apt-get install -y wget tar curl sudo iproute2 iptables net-tools
+# Цвета (можно убрать, если не нужны)
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+NC='\033[0m' # Сброс цвета
 
-# Рабочая директория
-WORKDIR="/root/network3"
-mkdir -p $WORKDIR && cd $WORKDIR
-
-# Скачивание и распаковка файлов ноды
-wget https://network3.io/ubuntu-node-v2.1.0.tar
-tar -xvf ubuntu-node-v2.1.0.tar
-rm -f ubuntu-node-v2.1.0.tar
-
-# Проверка наличия файла wg0.conf
-if [ ! -f "ubuntu-node/wg0.conf" ]; then
-  echo "Ошибка: Файл wg0.conf отсутствует. Проверьте содержимое архива или настройте вручную."
-  exit 1
+# Проверка наличия curl и установка, если не установлен
+if ! command -v curl &> /dev/null; then
+    sudo apt update
+    sudo apt install curl -y
 fi
+sleep 1
 
-# Создание Dockerfile
-cat <<EOF > Dockerfile
-FROM ubuntu:22.04
+# Автоматически получаем IP сервера (можно заменить на иной способ)
+SERVER_IP=$(curl -s ifconfig.me)
 
-RUN apt-get update && apt-get install -y wget tar curl sudo iproute2 iptables net-tools
+# Меню
+echo -e "${YELLOW}Выберите действие:${NC}"
+echo -e "1) Установка ноды"
+echo -e "2) Удаление ноды"
+read choice
 
-WORKDIR /app
-COPY ubuntu-node /app/ubuntu-node
+case $choice in
+    1)
+        echo -e "${BLUE}Установка ноды Network3...${NC}"
 
-CMD ["bash", "/app/ubuntu-node/manager.sh", "up"]
+        # Обновление и установка основных зависимостей
+        sudo apt update -y
+        sudo apt upgrade -y
+        sudo apt install -y screen net-tools iptables
+
+        # Скачивание и распаковка ноды в папку Network3
+        wget https://network3.io/ubuntu-node-v2.1.1.tar.gz
+        if [ -f "ubuntu-node-v2.1.1.tar.gz" ]; then
+            mkdir -p $HOME/Network3
+            tar -xvf ubuntu-node-v2.1.1.tar.gz -C $HOME/Network3
+            rm ubuntu-node-v2.1.1.tar.gz
+        else
+            echo -e "${RED}Ошибка: Файл ubuntu-node-v2.1.1.tar.gz не найден.${NC}"
+            exit 1
+        fi
+
+        # Проверка и открытие порта 8080
+        if ! sudo iptables -C INPUT -p tcp --dport 8080 -j ACCEPT 2>/dev/null; then
+            echo -e "${BLUE}Открываем порт 8080...${NC}"
+            sudo iptables -A INPUT -p tcp --dport 8080 -j ACCEPT
+            sudo iptables-save > /etc/iptables/rules.v4
+        else
+            echo -e "${GREEN}Порт 8080 уже открыт.${NC}"
+        fi
+
+        # Создание/обновление файла правил iptables
+        if sudo iptables -C INPUT -p tcp --dport 8080 -j ACCEPT 2>/dev/null; then
+            echo -e "${GREEN}Правила уже сохранены.${NC}"
+        else
+            echo -e "${BLUE}Сохраняем правила...${NC}"
+            sudo iptables-save > /etc/iptables/rules.v4
+        fi
+
+        # Создаём сервис для автозапуска ноды
+        cat <<EOF | sudo tee /etc/systemd/system/network3.service
+[Unit]
+Description=Network3 Node
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$HOME/Network3/ubuntu-node
+ExecStart=/bin/bash manager.sh up
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
 EOF
 
-# Сборка Docker-образа
-docker build -t network3 .
+        # Активация и запуск сервиса
+        sudo systemctl daemon-reload
+        sudo systemctl enable network3
+        sudo systemctl start network3
 
-# Проверка занятости порта 8080
-BASE_PORT=8080
-while lsof -i:$BASE_PORT &>/dev/null; do
-  echo "Порт $BASE_PORT занят, проверяем следующий."
-  BASE_PORT=$((BASE_PORT + 1))
-done
+        # Небольшая пауза, чтобы нода успела инициализироваться
+        sleep 3
 
-# Запуск контейнера
-docker run -d --name network3 --cap-add=NET_ADMIN --device=/dev/net/tun -p $BASE_PORT:8080 network3
+        # Получаем API ключ, вызвав manager.sh key
+        cd $HOME/Network3/ubuntu-node
+        KEY_OUTPUT=$(sudo bash manager.sh key 2>/dev/null)
+        cd $HOME
 
-# Извлечение ссылки для доступа к дашборду
-ACCESS_IP=$(hostname -I | awk '{print $1}')
-DASHBOARD_LINK="https://account.network3.ai/main?o=${ACCESS_IP}:${BASE_PORT}"
+        echo -e "${PURPLE}--------------------------------------------------------${NC}"
+        echo -e "${YELLOW}Нода установлена! Перейдите по ссылке для проверки:${NC}"
+        echo "https://account.network3.ai/main?o=${SERVER_IP}:8080"
+        echo -e "${YELLOW}Ваш API ключ:${NC}"
+        echo -e "${GREEN}${KEY_OUTPUT}${NC}"
+        echo -e "${PURPLE}--------------------------------------------------------${NC}"
+        ;;
 
-# Получение API Key
-sleep 10
-API_KEY=$(docker logs network3 2>/dev/null | grep -oP '^\S{43}=' | tail -1)
+    2)
+        echo -e "${BLUE}Удаление ноды Network3...${NC}"
 
-# Вывод итоговых данных
-cat <<EOF
+        # Остановка и отключение сервиса
+        if [ -f "/etc/systemd/system/network3.service" ]; then
+            sudo systemctl stop network3
+            sudo systemctl disable network3
+            sudo rm /etc/systemd/system/network3.service
+            sudo systemctl daemon-reload
+        fi
 
-Установка завершена.
-Данные для работы с нодой Network3:
-- Dashboard: $DASHBOARD_LINK
-- API Key: $API_KEY
+        # Удаление папки Network3
+        if [ -d "$HOME/Network3" ]; then
+            rm -rf $HOME/Network3
+            echo -e "${GREEN}Папка Network3 удалена.${NC}"
+        else
+            echo -e "${RED}Папка Network3 не найдена.${NC}"
+        fi
 
-Для просмотра логов выполните:
-  docker logs -f network3
+        echo -e "${GREEN}Нода Network3 успешно удалена!${NC}"
+        ;;
 
-Для подключения к контейнеру выполните:
-  docker exec -it network3 bash
-EOF
+    *)
+        echo -e "${RED}Неверный выбор. Пожалуйста, введите 1 или 2.${NC}"
+        ;;
+esac
