@@ -1,99 +1,115 @@
 #!/bin/bash
 
-# === Переменные ===
-DOCKERFILE_NAME="Dockerfile.sonaric"
-IMAGE_NAME="sonaricd:latest"
-CONTAINER_NAME="sonaric_node"
-DNS_PORT=1053
-GUI_PORT=44004
+# Цвета (можно убрать, если не нужны)
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m' # Сброс цвета
 
-# === Функция проверки доступности порта ===
-function find_free_port() {
-    local port=$1
-    while ss -lntu | grep -q ":$port "; do
-        port=$((port + 1))
-    done
-    echo $port
-}
+# 1. Проверяем наличие утилиты curl, при необходимости устанавливаем
+if ! command -v curl &> /dev/null; then
+    sudo apt update
+    sudo apt install curl -y
+fi
+sleep 1
 
-# === Подготовка Dockerfile ===
-cat > $DOCKERFILE_NAME <<EOF
-FROM ubuntu:22.04
+# 2. Проверяем наличие bc, т.к. будем сравнивать версии с помощью bc
+echo -e "${BLUE}Проверяем наличие bc...${NC}"
+if ! command -v bc &> /dev/null; then
+    sudo apt update
+    sudo apt install bc -y
+fi
+sleep 1
 
-# Устанавливаем зависимости
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    apt-transport-https \
-    ca-certificates \
-    curl \
-    gnupg \
-    wget && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Настраиваем ключи и репозиторий Sonaric
-RUN mkdir -p /etc/apt/keyrings && \
-    curl -fsSL "https://apt.sonaric.xyz/repo-signing-key.pgp" | gpg --dearmor -o /etc/apt/keyrings/sonaric.gpg && \
-    chmod a+r /etc/apt/keyrings/sonaric.gpg && \
-    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/sonaric.gpg] https://apt.sonaric.xyz stable main" > /etc/apt/sources.list.d/sonaric.list && \
-    apt-get update
-
-# Устанавливаем Sonaric
-RUN DEBIAN_FRONTEND=noninteractive apt-get install -y sonaric && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Обходим ошибки в postinst
-RUN sed -i 's/.*groupadd.*//' /var/lib/dpkg/info/sonaricd.postinst && \
-    sed -i 's/.*SUDO_USER not set.*//' /var/lib/dpkg/info/sonaricd.postinst && \
-    dpkg --configure -a
-
-# Создаем директории для логов
-RUN mkdir -p /var/lib/sonaricd/log && touch /var/lib/sonaricd/log/sonaricd.log
-
-# Устанавливаем переменные окружения
-ENV DISCOVER_GPU=false
-
-# Копируем скрипт запуска
-COPY start-sonaric.sh /usr/local/bin/start-sonaric.sh
-RUN chmod +x /usr/local/bin/start-sonaric.sh
-
-# Устанавливаем команду запуска
-CMD ["/usr/local/bin/start-sonaric.sh"]
-EOF
-
-# === Подготовка скрипта запуска ===
-cat > start-sonaric.sh <<EOF
-#!/bin/bash
-
-# Проверяем доступность портов
-DNS_PORT=\$(find_free_port 1053)
-GUI_PORT=\$(find_free_port 44004)
-
-# Запускаем Sonaric
-/usr/bin/sonaricd --dns-port \$DNS_PORT --moby-socket unix:///var/run/docker.sock
-EOF
-
-# === Строим Docker-образ ===
-echo "[INFO] Building Docker image..."
-docker build -f $DOCKERFILE_NAME -t $IMAGE_NAME .
-if [ $? -ne 0 ]; then
-    echo "[ERROR] Docker image build failed."
+# 3. Проверяем версию Ubuntu (не ниже 22.04)
+UBUNTU_VERSION=$(lsb_release -rs)
+REQUIRED_VERSION=22.04
+if (( $(echo "$UBUNTU_VERSION < $REQUIRED_VERSION" | bc -l) )); then
+    echo -e "${RED}Для этой ноды нужна минимальная версия Ubuntu 22.04 (у вас $UBUNTU_VERSION).${NC}"
     exit 1
 fi
 
-# === Удаляем старый контейнер, если существует ===
-if docker ps -a --format '{{.Names}}' | grep -Eq "^$CONTAINER_NAME\$"; then
-    echo "[INFO] Stopping and removing existing container..."
-    docker stop $CONTAINER_NAME && docker rm $CONTAINER_NAME
-fi
+# Меню
+echo -e "${YELLOW}Выберите действие:${NC}"
+echo "1) Установка ноды Sonaric"
+echo "2) Проверка работы ноды"
+echo "3) Проверка поинтов"
+echo "4) Регистрация ноды"
+echo "5) Удаление ноды"
+read choice
 
-# === Запускаем новый контейнер ===
-echo "[INFO] Starting container..."
-docker run -d --name $CONTAINER_NAME -p $DNS_PORT:$DNS_PORT/udp -p $GUI_PORT:$GUI_PORT/tcp $IMAGE_NAME
-if [ $? -ne 0 ]; then
-    echo "[ERROR] Failed to start container."
-    exit 1
-fi
+case $choice in
+    1)
+        echo -e "${BLUE}Устанавливаем ноду Sonaric...${NC}"
+        # Обновление системы и установка зависимостей
+        sudo apt update -y
+        sudo apt upgrade -y
+        sudo apt install -y git jq build-essential gcc unzip wget lz4
 
-# === Вывод информации ===
-echo "[INFO] Container started successfully."
-echo "[INFO] DNS Port: $DNS_PORT"
-echo "[INFO] GUI Port: $GUI_PORT"
+        # Установка Node.js (версия 20)
+        curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+        sudo apt-get install nodejs -y
+
+        # Установка Sonaric через официальный скрипт
+        sh -c "$(curl -fsSL http://get.sonaric.xyz/scripts/install.sh)"
+
+        # Сразу после установки — создаём бэкап
+        echo -e "${YELLOW}Введите имя вашей ноды (NodeName), чтобы сформировать backup-файл:${NC}"
+        read NODE_NAME
+
+        # Экспорт идентичности
+        sonaric identity-export -o "${NODE_NAME}.identity"
+        echo -e "${GREEN}Бэкап успешно создан: ${NODE_NAME}.identity${NC}"
+        echo -e "${YELLOW}Содержимое бэкапа (запишите или сохраните в надёжном месте):${NC}"
+        echo "-----------------------------------------"
+        cat "${NODE_NAME}.identity"
+        echo "-----------------------------------------"
+
+        echo -e "${PURPLE}--------------------------------------------------------${NC}"
+        echo -e "${YELLOW}Команда для проверки работы ноды:${NC}"
+        echo "sonaric node-info"
+        echo -e "${PURPLE}--------------------------------------------------------${NC}"
+
+        # Выполним команду node-info для демонстрации
+        sleep 2
+        sonaric node-info
+        ;;
+    2)
+        echo -e "${BLUE}Проверка работы ноды...${NC}"
+        sonaric node-info
+        ;;
+    3)
+        echo -e "${BLUE}Проверка поинтов...${NC}"
+        sonaric points
+        ;;
+    4)
+        echo -e "${YELLOW}Вставьте код, полученный в Discord:${NC}"
+        read DISCORD_CODE
+
+        if [ -z "$DISCORD_CODE" ]; then
+            echo -e "${RED}Код не был введён. Прерывание...${NC}"
+            exit 1
+        fi
+
+        echo -e "${BLUE}Регистрация ноды по коду: $DISCORD_CODE ...${NC}"
+        sonaric node-register "$DISCORD_CODE"
+        ;;
+    5)
+        echo -e "${BLUE}Удаление ноды Sonaric...${NC}"
+
+        # Останавливаем сервис (обычно называется sonaricd, если скрипт его создал)
+        sudo systemctl stop sonaricd 2>/dev/null || true
+        sudo systemctl disable sonaricd 2>/dev/null || true
+
+        # Удаляем директорию с данными (по умолчанию ~/.sonaric)
+        sudo rm -rf $HOME/.sonaric
+
+        echo -e "${GREEN}Нода Sonaric успешно удалена!${NC}"
+        ;;
+    *)
+        echo -e "${RED}Неверный выбор. Пожалуйста, введите число от 1 до 5.${NC}"
+        ;;
+esac
