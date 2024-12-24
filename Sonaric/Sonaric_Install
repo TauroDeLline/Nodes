@@ -32,18 +32,26 @@ if (( $(echo "$UBUNTU_VERSION < $REQUIRED_VERSION" | bc -l) )); then
     exit 1
 fi
 
-# Меню
 echo -e "${YELLOW}Выберите действие:${NC}"
-echo "1) Установка ноды Sonaric"
-echo "2) Проверка работы ноды"
-echo "3) Проверка поинтов"
-echo "4) Регистрация ноды"
-echo "5) Удаление ноды"
+echo "1) Установка ноды Sonaric (с регистрацией и бэкапом)"
+echo "2) Проверка работы ноды (node-info)"
+echo "3) Проверка поинтов (points)"
+echo "4) Удаление ноды"
 read choice
 
 case $choice in
     1)
         echo -e "${BLUE}Устанавливаем ноду Sonaric...${NC}"
+        
+        # Запрашиваем код регистрации СРАЗУ
+        echo -e "${YELLOW}Введите ваш Discord code (для регистрации ноды):${NC}"
+        read DISCORD_CODE
+
+        if [ -z "$DISCORD_CODE" ]; then
+            echo -e "${RED}Код не введён! Установка прервана.${NC}"
+            exit 1
+        fi
+
         # Обновление системы и установка зависимостей
         sudo apt update -y
         sudo apt upgrade -y
@@ -53,15 +61,19 @@ case $choice in
         curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
         sudo apt-get install nodejs -y
 
-        # Установка Sonaric через официальный скрипт
-        sh -c "$(curl -fsSL http://get.sonaric.xyz/scripts/install.sh)"
+        # Устанавливаем Sonaric, при этом подаём "N", чтобы пропустить повторный бэкап
+        (echo "N") | sh -c "$(curl -fsSL http://get.sonaric.xyz/scripts/install.sh)"
 
-        # Сразу после установки — создаём бэкап
+        # Выполняем регистрацию ноды сразу после установки
+        echo -e "${BLUE}Регистрируем ноду (node-register) с кодом: $DISCORD_CODE ...${NC}"
+        sonaric node-register "$DISCORD_CODE"
+
+        # Создаём бэкап вручную
         echo -e "${YELLOW}Введите имя вашей ноды (NodeName), чтобы сформировать backup-файл:${NC}"
         read NODE_NAME
 
-        # Экспорт идентичности
         sonaric identity-export -o "${NODE_NAME}.identity"
+
         echo -e "${GREEN}Бэкап успешно создан: ${NODE_NAME}.identity${NC}"
         echo -e "${YELLOW}Содержимое бэкапа (запишите или сохраните в надёжном месте):${NC}"
         echo "-----------------------------------------"
@@ -73,7 +85,7 @@ case $choice in
         echo "sonaric node-info"
         echo -e "${PURPLE}--------------------------------------------------------${NC}"
 
-        # Выполним команду node-info для демонстрации
+        # Небольшая пауза и проверка
         sleep 2
         sonaric node-info
         ;;
@@ -86,30 +98,17 @@ case $choice in
         sonaric points
         ;;
     4)
-        echo -e "${YELLOW}Вставьте код, полученный в Discord:${NC}"
-        read DISCORD_CODE
-
-        if [ -z "$DISCORD_CODE" ]; then
-            echo -e "${RED}Код не был введён. Прерывание...${NC}"
-            exit 1
-        fi
-
-        echo -e "${BLUE}Регистрация ноды по коду: $DISCORD_CODE ...${NC}"
-        sonaric node-register "$DISCORD_CODE"
-        ;;
-    5)
         echo -e "${BLUE}Удаление ноды Sonaric...${NC}"
-
-        # Останавливаем сервис (обычно называется sonaricd, если скрипт его создал)
+        # Останавливаем сервис (обычно называется sonaricd)
         sudo systemctl stop sonaricd 2>/dev/null || true
         sudo systemctl disable sonaricd 2>/dev/null || true
 
         # Удаляем директорию с данными (по умолчанию ~/.sonaric)
-        sudo rm -rf $HOME/.sonaric
+        sudo rm -rf "$HOME/.sonaric"
 
         echo -e "${GREEN}Нода Sonaric успешно удалена!${NC}"
         ;;
     *)
-        echo -e "${RED}Неверный выбор. Пожалуйста, введите число от 1 до 5.${NC}"
+        echo -e "${RED}Неверный выбор. Пожалуйста, введите число от 1 до 4.${NC}"
         ;;
 esac
