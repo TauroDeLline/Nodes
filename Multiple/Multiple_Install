@@ -1,111 +1,146 @@
 #!/bin/bash
 
-# Запрос уникального идентификатора у пользователя
-read -p "Введите уникальный идентификатор (identifier): " IDENTIFIER
+# Цвета (можно убрать, если не нужны)
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+NC='\033[0m'
 
-# Фиксированные параметры
-NODE_NAME="Multiple"   # Имя контейнера
-PIN="000000"           # PIN-код
-STORAGE=1000              # Размер хранилища (в GB)
-BANDWIDTH_UPLOAD=1000  # Исходящий трафик (в Mbps)
-BANDWIDTH_DOWNLOAD=1000 # Входящий трафик (в Mbps)
-
-# Удаление существующего контейнера, если он есть
-echo "=== Проверяем существование контейнера $NODE_NAME ==="
-if docker ps -a --format '{{.Names}}' | grep -wq "$NODE_NAME"; then
-    echo "Контейнер $NODE_NAME найден. Удаляем..."
-    docker rm -f $NODE_NAME
-else
-    echo "Контейнер $NODE_NAME не найден. Продолжаем."
+# Проверка наличия curl и установка, если не установлен
+if ! command -v curl &> /dev/null; then
+    sudo apt update
+    sudo apt install curl -y
 fi
+sleep 1
 
-# Создание Dockerfile
-echo "=== Создаем Dockerfile ==="
-cat << 'EOF' > Dockerfile
-# Используем базовый образ Ubuntu 22.04
-FROM ubuntu:22.04
+# Меню
+echo -e "${YELLOW}Выберите действие:${NC}"
+echo "1) Установка ноды Multiple"
+echo "2) Удаление ноды Multiple"
+read choice
 
-# Исправление списка репозиториев и установка необходимых пакетов
-RUN sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirror.yandex.ru/ubuntu|g' /etc/apt/sources.list && \
-    apt-get update && \
-    apt-get install -y wget tar libicu-dev locales && \
-    apt-get clean
+case $choice in
+    1)
+        echo -e "${BLUE}Устанавливаем ноду Multiple...${NC}"
 
-# Настройка локалей
-RUN locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8
+        # Обновление и установка зависимостей
+        sudo apt update -y && sudo apt upgrade -y
 
-# Настройка ICU и .NET
-ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
-ENV LC_ALL=en_US.UTF-8
-ENV LANG=en_US.UTF-8
-ENV LANGUAGE=en_US.UTF-8
+        # Проверка архитектуры системы
+        ARCH=$(uname -m)
+        if [[ "$ARCH" == "x86_64" ]]; then
+            CLIENT_URL="https://cdn.app.multiple.cc/client/linux/x64/multipleforlinux.tar"
+        elif [[ "$ARCH" == "aarch64" ]]; then
+            CLIENT_URL="https://cdn.app.multiple.cc/client/linux/arm64/multipleforlinux.tar"
+        else
+            echo -e "${RED}Неподдерживаемая архитектура системы: $ARCH${NC}"
+            exit 1
+        fi
 
-# Скачивание клиента Multiple (определяется автоматически)
-ARG ARCH=x64
-RUN echo "=== Скачиваем клиент Multiple ===" && \
-    mkdir -p /opt/multiple/Tracks /opt/multiple/Config /opt/multiple/logs && \
-    wget -O /tmp/multiple.tar https://cdn.app.multiple.cc/client/linux/$ARCH/multipleforlinux.tar && \
-    echo "=== Распаковываем клиент ===" && \
-    tar -xvf /tmp/multiple.tar -C /opt/multiple && \
-    echo "=== Перемещаем исполняемые файлы ===" && \
-    mv /opt/multiple/*/multiple-cli /opt/multiple/multiple-cli 2>/dev/null || true && \
-    mv /opt/multiple/*/multiple-node /opt/multiple/multiple-node 2>/dev/null || true && \
-    echo "=== Устанавливаем права доступа ===" && \
-    chmod -R 777 /opt/multiple && \
-    echo "<?xml version=\"1.0\"?><configuration><appSettings></appSettings></configuration>" > /opt/multiple/Config/app.config && \
-    chmod 666 /opt/multiple/Config/app.config
+        # Скачивание клиента
+        echo -e "${BLUE}Скачиваем клиент с $CLIENT_URL...${NC}"
+        wget $CLIENT_URL -O multipleforlinux.tar || { echo -e "${RED}Ошибка скачивания!${NC}"; exit 1; }
 
-# Проверка прав доступа
-RUN echo "=== Проверяем права доступа на директории ===" && \
-    ls -ld /opt/multiple /opt/multiple/Tracks /opt/multiple/Config /opt/multiple/logs && \
-    ls -la /opt/multiple/Config
+        # Распаковка и подготовка
+        echo -e "${BLUE}Распаковка файлов...${NC}"
+        tar -xvf multipleforlinux.tar
+        rm -f multipleforlinux.tar
 
-# Настройка PATH
-ENV PATH="/opt/multiple:$PATH"
+        # Переименуем распакованную папку (если нужно), либо проверим
+        # что папка называется multipleforlinux
+        if [ -d "multipleforlinux" ]; then
+            cd multipleforlinux
+        else
+            echo -e "${RED}Папка multipleforlinux не найдена после распаковки!${NC}"
+            exit 1
+        fi
 
-# Установка точки входа с отладочными параметрами
-WORKDIR /opt/multiple
-ENTRYPOINT ["./multiple-node", "--verbose", "--debug"]
+        echo -e "${BLUE}Выдаём права на выполнение...${NC}"
+        chmod +x ./multiple-cli
+        chmod +x ./multiple-node
+
+        # Добавляем директорию в PATH (опционально)
+        echo -e "${BLUE}Добавляем директорию в PATH...${NC}"
+        if ! grep -q "multipleforlinux" ~/.bash_profile 2>/dev/null; then
+            echo "PATH=\$PATH:$(pwd)" >> ~/.bash_profile
+        fi
+        source ~/.bash_profile
+
+        # Создаём systemd-сервис для автозапуска
+        SERVICE_FILE="/etc/systemd/system/multiple.service"
+        sudo bash -c "cat > $SERVICE_FILE" <<EOF
+[Unit]
+Description=Multiple Node
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$(pwd)
+ExecStart=$(pwd)/multiple-node
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
 EOF
 
-# Определение архитектуры и сборка образа
-ARCH=$(uname -m)
-echo "=== Определяем архитектуру системы: $ARCH ==="
-if [[ "$ARCH" == "x86_64" ]]; then
-    ARCH="x64"
-elif [[ "$ARCH" == "aarch64" ]]; then
-    ARCH="arm64"
-else
-    echo "Неподдерживаемая архитектура: $ARCH"
-    exit 1
-fi
+        sudo systemctl daemon-reload
+        sudo systemctl enable multiple
+        sudo systemctl start multiple
 
-echo "=== Начинаем сборку Docker-образа ==="
-docker build --no-cache --build-arg ARCH=$ARCH -t multiple-node .
+        # Запрашиваем у пользователя идентификатор и PIN
+        echo -e "${YELLOW}Введите ваш Account ID (IDENTIFIER):${NC}"
+        read IDENTIFIER
+        echo -e "${YELLOW}Введите ваш PIN:${NC}"
+        read PIN
 
-# Запуск контейнера
-echo "=== Запускаем контейнер $NODE_NAME ==="
-docker run -d --name $NODE_NAME --restart always multiple-node
+        # Привязка аккаунта
+        echo -e "${BLUE}Привязываем аккаунт (ID: $IDENTIFIER, PIN: $PIN)...${NC}"
+        ./multiple-cli bind \
+            --bandwidth-download 100 \
+            --identifier "$IDENTIFIER" \
+            --pin "$PIN" \
+            --storage 200 \
+            --bandwidth-upload 100
 
-# Проверка ICU и директорий
-echo "=== Проверка ICU и прав доступа в контейнере ==="
-docker exec -it $NODE_NAME bash -c "ldconfig -p | grep icu"
-docker exec -it $NODE_NAME bash -c "ls -ld /opt/multiple /opt/multiple/Tracks /opt/multiple/Config /opt/multiple/logs"
-docker exec -it $NODE_NAME bash -c "ls -la /opt/multiple/Config"
+        # Выводим статус
+        echo -e "${PURPLE}--------------------------------------------------------${NC}"
+        echo -e "${YELLOW}Установка завершена! Для проверки статуса ноды введите:${NC}"
+        echo "cd ~/multipleforlinux && ./multiple-cli status"
+        echo -e "${PURPLE}--------------------------------------------------------${NC}"
 
-# Привязка учетной записи
-echo "=== Привязка учетной записи ==="
-docker exec -it $NODE_NAME ./multiple-cli bind \
-    --bandwidth-download $BANDWIDTH_DOWNLOAD \
-    --identifier $IDENTIFIER \
-    --pin $PIN \
-    --storage $STORAGE \
-    --bandwidth-upload $BANDWIDTH_UPLOAD
+        # Небольшая задержка и проверка статуса
+        sleep 2
+        ./multiple-cli status
+        ;;
 
-# Проверка логов приложения
-echo "=== Проверяем логи приложения ==="
-docker exec -it $NODE_NAME bash -c "cat /opt/multiple/logs/$(date +'%Y-%m-%d').log"
+    2)
+        echo -e "${BLUE}Удаление ноды Multiple...${NC}"
 
-# Подключение к логам
-echo "=== Запущен просмотр логов. Нажмите Ctrl+C для выхода ==="
-docker logs -f $NODE_NAME
+        # Остановка сервиса
+        sudo systemctl stop multiple 2>/dev/null || true
+        sudo systemctl disable multiple 2>/dev/null || true
+        sudo rm -f /etc/systemd/system/multiple.service
+        sudo systemctl daemon-reload
+
+        # Остановка процесса ноды (на всякий случай)
+        pkill -f multiple-node 2>/dev/null || true
+
+        # Удаление папки
+        cd ~
+        if [ -d "multipleforlinux" ]; then
+            rm -rf multipleforlinux
+            echo -e "${GREEN}Папка multipleforlinux удалена.${NC}"
+        else
+            echo -e "${RED}Папка multipleforlinux не найдена.${NC}"
+        fi
+
+        echo -e "${GREEN}Нода Multiple успешно удалена!${NC}"
+        ;;
+    *)
+        echo -e "${RED}Неверный выбор. Пожалуйста, введите 1 или 2.${NC}"
+        ;;
+esac
