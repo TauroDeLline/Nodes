@@ -3,17 +3,22 @@
 set -e
 
 # Цвета для вывода
-RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
 NC='\033[0m'
+
+export DEBIAN_FRONTEND=noninteractive
 
 echo -e "${GREEN}Начинаем установку Docker...${NC}"
 
 # Обновляем систему и устанавливаем зависимости для Docker
 sudo apt update -y
-sudo apt upgrade -y
-sudo apt install -y apt-transport-https ca-certificates curl software-properties-common
+sudo apt full-upgrade -y
+sudo apt install -y --no-install-recommends \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    software-properties-common \
+    gnupg
 
 # Добавляем официальный ключ Docker
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
@@ -48,22 +53,12 @@ echo -e "${GREEN}Docker Compose установлен успешно!${NC}"
 # Установка node_exporter для мониторинга
 echo -e "${GREEN}Устанавливаем node_exporter...${NC}"
 
-# Проверка наличия curl и установка, если не установлен
-if ! command -v curl &> /dev/null; then
-    sudo apt update
-    sudo apt install curl -y
-fi
-sleep 1
-
 # Скачиваем и устанавливаем node_exporter
-cd $HOME && \
+cd /tmp && \
 wget https://github.com/prometheus/node_exporter/releases/download/v1.2.0/node_exporter-1.2.0.linux-amd64.tar.gz
 tar xvf node_exporter-1.2.0.linux-amd64.tar.gz
-rm node_exporter-1.2.0.linux-amd64.tar.gz
-sudo mv node_exporter-1.2.0.linux-amd64 node_exporter
-chmod +x $HOME/node_exporter/node_exporter
-sudo mv $HOME/node_exporter/node_exporter /usr/bin/
-rm -Rvf $HOME/node_exporter/
+sudo mv node_exporter-1.2.0.linux-amd64/node_exporter /usr/bin/
+rm -rf node_exporter-1.2.0.linux-amd64*
 
 # Создаем systemd-сервис для exporterd
 sudo tee /etc/systemd/system/exporterd.service > /dev/null <<EOF
@@ -90,4 +85,5 @@ sudo ufw allow 9100
 
 echo -e "${GREEN}node_exporter установлен и запущен!${NC}"
 
-echo -e "${GREEN}Все операции завершены успешно!${NC}"
+echo -e "${GREEN}Перезагрузка системы...${NC}"
+sudo reboot
