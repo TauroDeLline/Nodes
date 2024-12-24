@@ -1,7 +1,7 @@
 Start - обновляет систему, устанавливает докер с легким базовым образом, устанавливает node-exporter для дальнейшей настрйоки мониторинга
 
 ``` bash
-wget --no-cache -q -O Start.sh https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Setup%20server/Start -o Start && chmod +x Start && ./Start
+wget --no-cache -q https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Setup%20server/Start -o Start && chmod +x Start.sh && ./Start.sh
 ```
 
 Base Container - запрашивает название и создает докер-контейнер с 22 убунтой
