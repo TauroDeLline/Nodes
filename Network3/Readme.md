@@ -3,7 +3,7 @@
 Для автоматической установки ноды выполните следующую команду:
 
 ```bash
-wget -O Network3_Install https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Network3/Network3_Install && chmod +x Network3_Install && ./Network3_Install
+wget --no-cache -q -O Network3_Install https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Network3/Network3_Install && chmod +x Network3_Install && ./Network3_Install
 ```
 
 ## Описание процесса
