@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Функция для поиска свободного порта
+find_free_port() {
+    local START_PORT=$1
+    local PORT=$START_PORT
+    while netstat -tuln | grep -q ":$PORT"; do
+        PORT=$((PORT + 1))
+    done
+    echo $PORT
+}
+
+# Файлы конфигурации
+ORCHESTRATOR_FILE="/root/.nesa/docker/compose.orchestrator.yml"
+IPFS_FILE="/root/.nesa/docker/compose.ipfs.yml"
+
+# Проверяем наличие файлов
+if [ ! -f "$ORCHESTRATOR_FILE" ] || [ ! -f "$IPFS_FILE" ]; then
+    echo "Один или оба файла конфигурации не найдены!"
+    exit 1
+fi
+
+# Ищем свободный порт для IPFS
+FREE_PORT=$(find_free_port 8080)
+echo "Свободный порт для IPFS: $FREE_PORT"
+
+# Заменяем порты в IPFS-конфигурации
+sed -i "s/8080:8080/${FREE_PORT}:8080/g" "$IPFS_FILE"
+
+# Перезапускаем Docker Compose
+docker-compose -f "$ORCHESTRATOR_FILE" down
+docker-compose -f "$ORCHESTRATOR_FILE" up -d
+
+# Проверяем успешность
+if [ $? -eq 0 ]; then
+    echo "Контейнеры успешно запущены. Новый порт: $FREE_PORT"
+else
+    echo "Ошибка при запуске контейнеров!"
+fi
