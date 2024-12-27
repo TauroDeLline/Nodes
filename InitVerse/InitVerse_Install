@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -e
 
-# Check if port is free
 function is_port_free() {
   local port_check="$1"
   if ss -lnt 2>/dev/null | awk '{print $4}' | grep -E ":${port_check}$" > /dev/null; then
@@ -11,7 +10,6 @@ function is_port_free() {
   fi
 }
 
-# Find a free port starting at 32672
 function get_free_port() {
   local base_port=32672
   local max_offset=100
@@ -35,14 +33,12 @@ read -rp "Enter wallet address (e.g. 0x12345...): " WALLET_ADDRESS
 
 HOST_PORT=$(get_free_port)
 if [ -z "$HOST_PORT" ]; then
-  echo "Error: no free port found in the range 32672-32772."
+  echo "Error: no free port found in range 32672-32772."
   exit 1
 fi
-
 CONTAINER_PORT=32672
-echo "Selected host port: $HOST_PORT"
+echo "Selected port $HOST_PORT on host."
 
-# Generate Dockerfile (ASCII only)
 cat <<'EOF' > Dockerfile
 FROM ubuntu:22.04
 
@@ -58,14 +54,13 @@ ENV PS1="(initverse) \u@\h:\w\$ "
 WORKDIR /home/ininode
 USER ininode
 
-# Download iniminer (replace link if needed)
 RUN wget -q https://github.com/Project-InitVerse/miner/releases/download/v1.0.0/iniminer-linux-x64 -O iniminer-linux-x64 \
     && chmod +x iniminer-linux-x64
 
 CMD ["bash", "-c", "echo initverse container is built. Ready to run."]
 EOF
 
-# Generate docker-compose.yml (ASCII only, no version field)
+# Single-line command to avoid "command not found" issue
 cat <<EOF > docker-compose.yml
 services:
   initverse:
@@ -77,18 +72,16 @@ services:
     ports:
       - "${HOST_PORT}:${CONTAINER_PORT}"
     command: >
-      bash -c "./iniminer-linux-x64
-        --pool stratum+tcp://${WALLET_ADDRESS}.${MINER_NAME}@pool-core-testnet.inichain.com:${CONTAINER_PORT}"
+      bash -c "./iniminer-linux-x64 --pool stratum+tcp://${WALLET_ADDRESS}.${MINER_NAME}@pool-core-testnet.inichain.com:${CONTAINER_PORT}"
 EOF
 
-echo "Building and starting the initverse container..."
+echo "Building and starting container initverse..."
 docker-compose up -d
 
 if ! docker ps --format '{{.Names}}' | grep -q "^initverse\$"; then
-  echo "Error: container 'initverse' not running. Check docker-compose logs."
+  echo "Error: initverse container not running."
   exit 1
 fi
 
-echo "Container 'initverse' is running. Showing logs:"
-echo "Press Ctrl+C to stop viewing logs (container will keep running)."
+echo "Container 'initverse' is running. Showing logs (Ctrl+C to exit)."
 docker logs -f initverse
