@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-# Проверка, что Docker и Docker Compose уже установлены — 
-# если хотите, добавьте здесь отдельные проверки.
-
-# Функция проверки свободного порта
+# Проверка свободного порта
 function is_port_free() {
   local port_check=$1
   if ss -lnt 2>/dev/null | awk '{print $4}' | grep -E ":${port_check}$" > /dev/null; then
@@ -60,15 +57,14 @@ ENV PS1="(initverse) \\u@\\h:\\w\\$ "
 WORKDIR /home/ininode
 USER ininode
 
-# Пример скачивания iniminer (ссылка условная, замените на нужную)
-RUN wget -q https://github.com/Project-InitVerse/ini-miner/releases/download/v0.1/iniminer-linux-x64 -O iniminer-linux-x64 \\
+# Скачиваем актуальный майнер (v1.0.0)
+RUN wget -q https://github.com/Project-InitVerse/miner/releases/download/v1.0.0/iniminer-linux-x64 -O iniminer-linux-x64 \\
     && chmod +x iniminer-linux-x64
 
 CMD ["bash", "-c", "echo initverse container is built. Ready to run."]
 EOF
 
-# Генерация docker-compose.yml
-# Убираем строку version, чтобы не было лишних предупреждений
+# Генерация docker-compose.yml (убираем version, чтобы не было ворнингов)
 cat <<EOF > docker-compose.yml
 services:
   initverse:
@@ -76,16 +72,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: initverse:latest
     restart: unless-stopped
     ports:
       - "${HOST_PORT}:${CONTAINER_PORT}"
+    # Если хотите указать определённые ядра, добавьте:
+    # --cpu-devices 0 --cpu-devices 1 и т.п.
     command: >
       bash -c "./iniminer-linux-x64
         --pool stratum+tcp://${WALLET_ADDRESS}.${MINER_NAME}@pool-core-testnet.inichain.com:${CONTAINER_PORT}"
 EOF
 
-# Запуск
 echo "Собираем и запускаем контейнер initverse..."
 docker-compose up -d
 
@@ -95,5 +91,5 @@ if ! docker ps --format '{{.Names}}' | grep -q "^initverse\$"; then
 fi
 
 echo "Контейнер 'initverse' запущен. Открываем логи:"
-echo "Нажмите Ctrl+C, чтобы выйти из просмотра, контейнер продолжит работу."
+echo "Нажмите Ctrl+C, чтобы выйти из просмотра (контейнер продолжит работу)."
 docker logs -f initverse
