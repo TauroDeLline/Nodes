@@ -60,7 +60,6 @@ RUN wget -q https://github.com/Project-InitVerse/miner/releases/download/v1.0.0/
 CMD ["bash", "-c", "echo initverse container is built. Ready to run."]
 EOF
 
-# Single-line command to avoid "command not found" issue
 cat <<EOF > docker-compose.yml
 services:
   initverse:
@@ -71,8 +70,10 @@ services:
     restart: unless-stopped
     ports:
       - "${HOST_PORT}:${CONTAINER_PORT}"
-    command: >
-      bash -c "./iniminer-linux-x64 --pool stratum+tcp://${WALLET_ADDRESS}.${MINER_NAME}@pool-core-testnet.inichain.com:${CONTAINER_PORT}"
+    command:
+      - "/bin/bash"
+      - "-c"
+      - "./iniminer-linux-x64 --pool stratum+tcp://${WALLET_ADDRESS}.${MINER_NAME}@pool-core-testnet.inichain.com:${CONTAINER_PORT}"
 EOF
 
 echo "Building and starting container initverse..."
