@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
-
 set -e
 
-# ----------------------------------------------------------------------------
+# Проверка, что Docker и Docker Compose уже установлены — 
+# если хотите, добавьте здесь отдельные проверки.
+
 # Функция проверки свободного порта
-# Возвращает 0 (true), если порт свободен, иначе 1 (false).
-# ----------------------------------------------------------------------------
 function is_port_free() {
   local port_check=$1
-  # Проверяем TCP-порты, слушающие на 0.0.0.0 или 127.0.0.1
   if ss -lnt 2>/dev/null | awk '{print $4}' | grep -E ":${port_check}$" > /dev/null; then
     return 1
   else
@@ -16,12 +14,10 @@ function is_port_free() {
   fi
 }
 
-# ----------------------------------------------------------------------------
 # Функция поиска свободного порта, начиная с 32672
-# ----------------------------------------------------------------------------
 function get_free_port() {
   local base_port=32672
-  local max_offset=100  # Проверим максимум 100 портов подряд
+  local max_offset=100
   for (( i=0; i<max_offset; i++ )); do
     local candidate=$((base_port + i))
     if is_port_free "$candidate"; then
@@ -29,90 +25,58 @@ function get_free_port() {
       return 0
     fi
   done
-  return 1  # свободный порт не найден
+  return 1
 }
 
-echo "=== Автоматическая настройка Docker-контейнера 'InitVerse' для майнинга ==="
+echo "Настройка Docker-контейнера initverse для майнинга."
 
-# ----------------------------------------------------------------------------
-# Запрашиваем только 2 параметра
-# ----------------------------------------------------------------------------
 read -rp "Введите название майнера (пример: Worker001): " MINER_NAME
-if [ -z "$MINER_NAME" ]; then
-  echo "Ошибка: имя майнера не может быть пустым!"
-  exit 1
-fi
+[ -z "$MINER_NAME" ] && { echo "Ошибка: название майнера не может быть пустым!"; exit 1; }
 
 read -rp "Введите адрес кошелька (пример: 0x12345...): " WALLET_ADDRESS
-if [ -z "$WALLET_ADDRESS" ]; then
-  echo "Ошибка: адрес кошелька не может быть пустым!"
-  exit 1
-fi
+[ -z "$WALLET_ADDRESS" ] && { echo "Ошибка: адрес кошелька не может быть пустым!"; exit 1; }
 
-# ----------------------------------------------------------------------------
-# Определяем свободный порт на хосте
-# ----------------------------------------------------------------------------
 HOST_PORT=$(get_free_port)
 if [ -z "$HOST_PORT" ]; then
-  echo "Ошибка: не смогли найти свободный порт в диапазоне 32672-32772."
+  echo "Ошибка: не найден свободный порт в диапазоне 32672-32772."
   exit 1
 fi
-echo "Будет использоваться порт $HOST_PORT на хосте."
-
-# Внутри контейнера предположим, что служба слушает 32672 (по ТЗ для пула).
 CONTAINER_PORT=32672
+echo "Выбран порт $HOST_PORT на хосте."
 
-# ----------------------------------------------------------------------------
 # Генерация Dockerfile
-# ----------------------------------------------------------------------------
 cat <<EOF > Dockerfile
-# =============================================================
-#  Dockerfile для контейнера "InitVerse"
-#  - Устанавливаем необходимые пакеты
-#  - Ставим iniminer (пример, можете заменить URL на актуальный)
-# =============================================================
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
-
-# Обновляем списки, выполним upgrade только внутри контейнера
 RUN apt-get update && apt-get upgrade -y && apt-get install -y \\
     wget \\
     ca-certificates \\
-    # при необходимости добавить ещё пакеты (curl, tar и др.)
     && rm -rf /var/lib/apt/lists/*
 
-# Создаём пользователя, чтобы не работать от root
 RUN useradd -ms /bin/bash ininode
-
-# Настроим PS1, чтобы при docker exec -it ... bash
-# было видно, что мы внутри InitVerse
-ENV PS1="(InitVerse) \\u@\\h:\\w\\$ "
+ENV PS1="(initverse) \\u@\\h:\\w\\$ "
 
 WORKDIR /home/ininode
 USER ininode
 
-# Скачиваем iniminer (пример команды, подставьте актуальную ссылку)
-# Ниже ссылка условная. При необходимости скорректируйте.
+# Пример скачивания iniminer (ссылка условная, замените на нужную)
 RUN wget -q https://github.com/Project-InitVerse/ini-miner/releases/download/v0.1/iniminer-linux-x64 -O iniminer-linux-x64 \\
     && chmod +x iniminer-linux-x64
 
-# CMD по умолчанию просто "заставляет" контейнер не завершаться мгновенно.
-# Основная команда пойдёт в docker-compose.yml
-CMD ["bash", "-c", "echo InitVerse container is built. Ready to run."]
+CMD ["bash", "-c", "echo initverse container is built. Ready to run."]
 EOF
 
-# ----------------------------------------------------------------------------
 # Генерация docker-compose.yml
-# ----------------------------------------------------------------------------
+# Убираем строку version, чтобы не было лишних предупреждений
 cat <<EOF > docker-compose.yml
-version: '3.9'
 services:
-  InitVerse:
-    container_name: InitVerse
+  initverse:
+    container_name: initverse
     build:
       context: .
       dockerfile: Dockerfile
+    image: initverse:latest
     restart: unless-stopped
     ports:
       - "${HOST_PORT}:${CONTAINER_PORT}"
@@ -121,19 +85,15 @@ services:
         --pool stratum+tcp://${WALLET_ADDRESS}.${MINER_NAME}@pool-core-testnet.inichain.com:${CONTAINER_PORT}"
 EOF
 
-# ----------------------------------------------------------------------------
-# Запуск через docker-compose
-# ----------------------------------------------------------------------------
-echo "Запускаем контейнер InitVerse через docker-compose..."
+# Запуск
+echo "Собираем и запускаем контейнер initverse..."
 docker-compose up -d
 
-if ! docker ps --format '{{.Names}}' | grep -q "^InitVerse\$"; then
-  echo "Ошибка: контейнер InitVerse не запущен. Проверьте логи docker-compose."
+if ! docker ps --format '{{.Names}}' | grep -q "^initverse\$"; then
+  echo "Ошибка: контейнер initverse не запущен. Проверьте логи docker-compose."
   exit 1
 fi
 
-echo "Контейнер 'InitVerse' успешно запущен."
-echo "Подключён порт: $HOST_PORT (наружу) -> $CONTAINER_PORT (внутри контейнера)."
-echo
-echo "=== Выводим живой лог ноды. Нажмите Ctrl+C, чтобы прекратить просмотр, не останавливая контейнер. ==="
-docker logs -f InitVerse
+echo "Контейнер 'initverse' запущен. Открываем логи:"
+echo "Нажмите Ctrl+C, чтобы выйти из просмотра, контейнер продолжит работу."
+docker logs -f initverse
