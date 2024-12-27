@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
-# Проверка свободного порта
+# Check if port is free
 function is_port_free() {
-  local port_check=$1
+  local port_check="$1"
   if ss -lnt 2>/dev/null | awk '{print $4}' | grep -E ":${port_check}$" > /dev/null; then
     return 1
   else
@@ -11,7 +11,7 @@ function is_port_free() {
   fi
 }
 
-# Функция поиска свободного порта, начиная с 32672
+# Find a free port starting at 32672
 function get_free_port() {
   local base_port=32672
   local max_offset=100
@@ -25,46 +25,47 @@ function get_free_port() {
   return 1
 }
 
-echo "Настройка Docker-контейнера initverse для майнинга."
+echo "Docker container setup for initverse mining."
 
-read -rp "Введите название майнера (пример: Worker001): " MINER_NAME
-[ -z "$MINER_NAME" ] && { echo "Ошибка: название майнера не может быть пустым!"; exit 1; }
+read -rp "Enter miner name (e.g. Worker001): " MINER_NAME
+[ -z "$MINER_NAME" ] && { echo "Error: miner name cannot be empty!"; exit 1; }
 
-read -rp "Введите адрес кошелька (пример: 0x12345...): " WALLET_ADDRESS
-[ -z "$WALLET_ADDRESS" ] && { echo "Ошибка: адрес кошелька не может быть пустым!"; exit 1; }
+read -rp "Enter wallet address (e.g. 0x12345...): " WALLET_ADDRESS
+[ -z "$WALLET_ADDRESS" ] && { echo "Error: wallet address cannot be empty!"; exit 1; }
 
 HOST_PORT=$(get_free_port)
 if [ -z "$HOST_PORT" ]; then
-  echo "Ошибка: не найден свободный порт в диапазоне 32672-32772."
+  echo "Error: no free port found in the range 32672-32772."
   exit 1
 fi
-CONTAINER_PORT=32672
-echo "Выбран порт $HOST_PORT на хосте."
 
-# Генерация Dockerfile
-cat <<EOF > Dockerfile
+CONTAINER_PORT=32672
+echo "Selected host port: $HOST_PORT"
+
+# Generate Dockerfile (ASCII only)
+cat <<'EOF' > Dockerfile
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get upgrade -y && apt-get install -y \\
-    wget \\
-    ca-certificates \\
+RUN apt-get update && apt-get upgrade -y && apt-get install -y \
+    wget \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd -ms /bin/bash ininode
-ENV PS1="(initverse) \\u@\\h:\\w\\$ "
+ENV PS1="(initverse) \u@\h:\w\$ "
 
 WORKDIR /home/ininode
 USER ininode
 
-# Скачиваем актуальный майнер (v1.0.0)
-RUN wget -q https://github.com/Project-InitVerse/miner/releases/download/v1.0.0/iniminer-linux-x64 -O iniminer-linux-x64 \\
+# Download iniminer (replace link if needed)
+RUN wget -q https://github.com/Project-InitVerse/miner/releases/download/v1.0.0/iniminer-linux-x64 -O iniminer-linux-x64 \
     && chmod +x iniminer-linux-x64
 
 CMD ["bash", "-c", "echo initverse container is built. Ready to run."]
 EOF
 
-# Генерация docker-compose.yml (убираем version, чтобы не было ворнингов)
+# Generate docker-compose.yml (ASCII only, no version field)
 cat <<EOF > docker-compose.yml
 services:
   initverse:
@@ -75,21 +76,19 @@ services:
     restart: unless-stopped
     ports:
       - "${HOST_PORT}:${CONTAINER_PORT}"
-    # Если хотите указать определённые ядра, добавьте:
-    # --cpu-devices 0 --cpu-devices 1 и т.п.
     command: >
       bash -c "./iniminer-linux-x64
         --pool stratum+tcp://${WALLET_ADDRESS}.${MINER_NAME}@pool-core-testnet.inichain.com:${CONTAINER_PORT}"
 EOF
 
-echo "Собираем и запускаем контейнер initverse..."
+echo "Building and starting the initverse container..."
 docker-compose up -d
 
 if ! docker ps --format '{{.Names}}' | grep -q "^initverse\$"; then
-  echo "Ошибка: контейнер initverse не запущен. Проверьте логи docker-compose."
+  echo "Error: container 'initverse' not running. Check docker-compose logs."
   exit 1
 fi
 
-echo "Контейнер 'initverse' запущен. Открываем логи:"
-echo "Нажмите Ctrl+C, чтобы выйти из просмотра (контейнер продолжит работу)."
+echo "Container 'initverse' is running. Showing logs:"
+echo "Press Ctrl+C to stop viewing logs (container will keep running)."
 docker logs -f initverse
