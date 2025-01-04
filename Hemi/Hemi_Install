@@ -21,6 +21,18 @@ if ! docker compose version &> /dev/null; then
     fi
 fi
 
+# Проверка наличия контейнера Hemi
+if [ $(docker ps -a -q -f name=Hemi | wc -l) -gt 0 ]; then
+    echo -e "${YELLOW}Контейнер Hemi уже существует.${NC}"
+    read -p "Хотите удалить существующий контейнер и установить новый? (y/n): " CONFIRM
+    if [ "$CONFIRM" != "y" ]; then
+        echo -e "${RED}Операция отменена пользователем.${NC}"
+        exit 1
+    fi
+    docker compose stop hemi
+    docker compose rm -f hemi
+fi
+
 # Меню выбора действия
 echo -e "${YELLOW}Выберите действие:${NC}"
 echo "1) Установить контейнер"
@@ -95,7 +107,7 @@ RUN wget -O heminetwork_linux_amd64.tar.gz "$BINARY_URL" && \
     rm heminetwork_linux_amd64.tar.gz
 
 # Устанавливаем пользовательский PS1 для bash
-ENV PS1="[Hemi] \w\$ "
+ENV PS1="[Hemi] \w$ "
 
 # Команда для генерации ключа
 CMD ["/app/keygen", "-secp256k1", "-json", "-net=testnet"]
@@ -123,6 +135,31 @@ EOT
     echo -e "${YELLOW}Ваш pubkey_hash (BTC адрес): $PUBKEY_HASH${NC}"
     echo -e "${YELLOW}Ваш приватный ключ: $PRIV_KEY${NC}"
     echo -e "${YELLOW}Сохраните файл popm-address.json в текущей папке для дальнейшего использования.${NC}"
+
+    # После генерации ключа восстанавливаем Dockerfile
+    cat <<EOT > Dockerfile
+# Используем базовый образ
+FROM ubuntu:22.04
+
+# Устанавливаем необходимые пакеты
+RUN apt-get update && apt-get install -y \
+    wget tar bash jq && \
+    rm -rf /var/lib/apt/lists/*
+
+# Задаем рабочую директорию
+WORKDIR /app
+
+# Загружаем бинарный файл Hemi
+RUN wget -O heminetwork_linux_amd64.tar.gz "$BINARY_URL" && \
+    tar --strip-components=1 -xzvf heminetwork_linux_amd64.tar.gz && \
+    rm heminetwork_linux_amd64.tar.gz
+
+# Устанавливаем пользовательский PS1 для bash
+ENV PS1="[Hemi] \w$ "
+
+# Определяем команду запуска
+CMD ["/app/popmd"]
+EOT
 else
     echo -e "${GREEN}Используется указанный приватный ключ.${NC}"
 fi
@@ -140,10 +177,11 @@ echo -e "${GREEN}.env создан:$(cat .env)${NC}"
 # Функция обновления контейнера
 update_container() {
     echo -e "${YELLOW}Обновляем контейнер Hemi...${NC}"
-    docker compose stop hemi && docker compose rm -f hemi && docker compose up -d hemi || {
-        echo -e "${RED}Ошибка перезапуска контейнера.${NC}"
-        exit 1
-    }
+    docker compose stop hemi
+    docker compose rm -f hemi
+
+    # Пересобираем и перезапускаем контейнер
+    docker compose up -d --build || echo -e "${RED}Ошибка запуска контейнера.${NC}"
     echo -e "${GREEN}Контейнер успешно обновлен!${NC}"
 }
 
@@ -157,10 +195,9 @@ update_fee() {
     fi
     sed -i "s|POPM_STATIC_FEE=.*|POPM_STATIC_FEE=$NEW_FEE|" .env
     echo -e "${GREEN}Обновлен .env файл:$(cat .env)${NC}"
-    docker compose stop hemi && docker compose rm -f hemi && docker compose up -d hemi || {
-        echo -e "${RED}Ошибка перезапуска контейнера.${NC}"
-        exit 1
-    }
+    docker compose stop hemi
+    docker compose rm -f hemi
+    docker compose up -d || echo -e "${RED}Ошибка перезапуска контейнера.${NC}"
     echo -e "${GREEN}Комиссия успешно обновлена!${NC}"
 }
 
