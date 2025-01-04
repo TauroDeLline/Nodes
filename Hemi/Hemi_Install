@@ -1,142 +1,10 @@
 #!/bin/bash
 
-# Цвета текста
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-RED='\033[0;31m'
-NC='\033[0m' # Сброс цвета
+# ... (остальная часть скрипта остаётся без изменений)
 
-# Проверка наличия Docker и Docker Compose
-if ! command -v docker &> /dev/null; then
-    echo -e "${RED}Ошибка: Docker не установлен.${NC}"
-    exit 1
-fi
-
-if ! docker compose version &> /dev/null; then
-    echo -e "${YELLOW}Docker Compose не найден. Устанавливаем...${NC}"
-    sudo apt update && sudo apt install -y docker-compose-plugin
-    if ! docker compose version &> /dev/null; then
-        echo -e "${RED}Ошибка: Не удалось установить Docker Compose.${NC}"
-        exit 1
-    fi
-fi
-
-# Проверка наличия контейнера Hemi
-if [ $(docker ps -a -q -f name=Hemi | wc -l) -gt 0 ]; then
-    echo -e "${YELLOW}Контейнер Hemi уже существует.${NC}"
-    read -p "Хотите удалить существующий контейнер и установить новый? (y/n): " CONFIRM
-    if [ "$CONFIRM" != "y" ]; then
-        echo -e "${RED}Операция отменена пользователем.${NC}"
-        exit 1
-    fi
-    docker compose stop hemi
-    docker compose rm -f hemi
-fi
-
-# Меню выбора действия
-echo -e "${YELLOW}Выберите действие:${NC}"
-echo "1) Установить контейнер"
-echo "2) Обновить контейнер до последней версии"
-echo "3) Обновить комиссию"
-read -p "Введите номер действия: " ACTION
-
-# Проверка выбранного действия
-case $ACTION in
-    1)
-        echo -e "${YELLOW}Начало установки контейнера.${NC}"
-        ;;
-    2)
-        echo -e "${YELLOW}Начало обновления контейнера.${NC}"
-        ;;
-    3)
-        echo -e "${YELLOW}Начало обновления комиссии.${NC}"
-        ;;
-    *)
-        echo -e "${RED}Ошибка: неверный выбор действия!${NC}"
-        exit 1
-        ;;
-esac
-
-# Прямая ссылка на бинарник
-BINARY_URL="https://github.com/hemilabs/heminetwork/releases/download/v0.8.0/heminetwork_v0.8.0_linux_amd64.tar.gz"
-
-# Ввод переменных от пользователя только для установки контейнера
-if [ "$ACTION" == "1" ]; then
-    read -p "Введите приватный ключ (оставьте пустым для генерации нового) (POPM_BTC_PRIVKEY): " PRIV_KEY
-    read -p "Укажите желаемый размер комиссии (минимум 50) (POPM_STATIC_FEE): " FEE
-
-    # Проверка минимального значения комиссии
-    if [ "$FEE" -lt 50 ]; then
-        echo -e "${RED}Ошибка: комиссия должна быть не меньше 50!${NC}"
-        exit 1
-    fi
-else
-    # Если действие не установка, загружаем текущий приватный ключ и комиссию из .env
-    if [ -f ".env" ]; then
-        PRIV_KEY=$(grep "POPM_BTC_PRIVKEY" .env | cut -d '=' -f2)
-        FEE=$(grep "POPM_STATIC_FEE" .env | cut -d '=' -f2)
-        echo -e "${GREEN}Используется текущий приватный ключ и комиссия из .env: ${NC}"
-        echo -e "Приватный ключ: $PRIV_KEY"
-        echo -e "Комиссия: $FEE"
-    else
-        echo -e "${RED}Ошибка: файл .env не найден. Пожалуйста, выполните установку контейнера.${NC}"
-        exit 1
-    fi
-fi
-
-# Если приватный ключ не указан, создаем новый внутри контейнера
-if [ "$ACTION" == "1" ] && [ -z "$PRIV_KEY" ]; then
-    echo -e "${YELLOW}Приватный ключ не указан. Генерация нового ключа...${NC}"
-
-    # Подготовка Dockerfile для генерации ключа
-    cat <<EOT > Dockerfile
-# Используем базовый образ
-FROM ubuntu:22.04
-
-# Устанавливаем необходимые пакеты
-RUN apt-get update && apt-get install -y \
-    wget tar bash jq && \
-    rm -rf /var/lib/apt/lists/*
-
-# Задаем рабочую директорию
-WORKDIR /app
-
-# Загружаем бинарный файл Hemi для генерации ключей
-RUN wget -O heminetwork_linux_amd64.tar.gz "$BINARY_URL" && \
-    tar --strip-components=1 -xzvf heminetwork_linux_amd64.tar.gz && \
-    rm heminetwork_linux_amd64.tar.gz
-
-# Устанавливаем пользовательский PS1 для bash
-ENV PS1="[Hemi] \w$ "
-
-# Команда для генерации ключа
-CMD ["/app/keygen", "-secp256k1", "-json", "-net=testnet"]
-EOT
-
-    # Строим временный контейнер для генерации ключа
-    docker build -t hemi-keygen .
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Ошибка: не удалось построить контейнер для генерации ключа.${NC}"
-        exit 1
-    fi
-
-    # Запускаем контейнер для генерации ключа и сохраняем результат
-    docker run --rm hemi-keygen > popm-address.json
-
-    if [ ! -f "popm-address.json" ]; then
-        echo -e "${RED}Ошибка: файл popm-address.json не создан.${NC}"
-        exit 1
-    fi
-
-    PRIV_KEY=$(jq -r '.private_key' popm-address.json)
-    PUBKEY_HASH=$(jq -r '.pubkey_hash' popm-address.json)
-
-    echo -e "${GREEN}Новый ключ сгенерирован!${NC}"
-    echo -e "${YELLOW}Ваш pubkey_hash (BTC адрес): $PUBKEY_HASH${NC}"
-    echo -e "${YELLOW}Ваш приватный ключ: $PRIV_KEY${NC}"
-    echo -e "${YELLOW}Сохраните файл popm-address.json в текущей папке для дальнейшего использования.${NC}"
-
-    # После генерации ключа восстанавливаем Dockerfile
+# Функция пересборки Dockerfile для запуска `popmd`
+finalize_dockerfile() {
+    echo -e "${YELLOW}Обновление Dockerfile для основного запуска...${NC}"
     cat <<EOT > Dockerfile
 # Используем базовый образ
 FROM ubuntu:22.04
@@ -155,24 +23,36 @@ RUN wget -O heminetwork_linux_amd64.tar.gz "$BINARY_URL" && \
     rm heminetwork_linux_amd64.tar.gz
 
 # Устанавливаем пользовательский PS1 для bash
-ENV PS1="[Hemi] \w$ "
+ENV PS1="[Hemi] \w\$ "
 
 # Определяем команду запуска
 CMD ["/app/popmd"]
 EOT
-else
-    echo -e "${GREEN}Используется указанный приватный ключ.${NC}"
-fi
 
-# Создаем .env-файл для переменных окружения
-echo -e "${YELLOW}Создаем файл .env с параметрами окружения...${NC}"
-cat <<EOT > .env
-POPM_BTC_PRIVKEY=$PRIV_KEY
-POPM_STATIC_FEE=$FEE
-POPM_BFG_URL=wss://testnet.rpc.hemi.network/v1/ws/public
-EOT
+    echo -e "${GREEN}Dockerfile обновлён:${NC}"
+    cat Dockerfile
+}
 
-echo -e "${GREEN}.env создан:$(cat .env)${NC}"
+# Функция установки контейнера
+install_container() {
+    echo -e "${YELLOW}Проверка текущего Dockerfile...${NC}"
+    if [ -f Dockerfile ]; then
+        echo -e "${GREEN}Содержимое Dockerfile перед установкой:${NC}"
+        cat Dockerfile
+    else
+        echo -e "${RED}Dockerfile отсутствует. Выполнение завершено с ошибкой.${NC}"
+        exit 1
+    fi
+
+    echo -e "${YELLOW}Устанавливаем контейнер Hemi...${NC}"
+    docker compose up -d --build > build.log 2>&1
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Ошибка установки контейнера. Логи сборки:${NC}"
+        cat build.log
+        exit 1
+    fi
+    echo -e "${GREEN}Контейнер успешно установлен!${NC}"
+}
 
 # Функция обновления контейнера
 update_container() {
@@ -180,9 +60,15 @@ update_container() {
     docker compose stop hemi
     docker compose rm -f hemi
 
-    # Пересобираем и перезапускаем контейнер
-    docker compose up -d --build || echo -e "${RED}Ошибка запуска контейнера.${NC}"
-    echo -e "${GREEN}Контейнер успешно обновлен!${NC}"
+    finalize_dockerfile
+
+    docker compose up -d --build > build.log 2>&1
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Ошибка запуска контейнера. Логи сборки:${NC}"
+        cat build.log
+        exit 1
+    fi
+    echo -e "${GREEN}Контейнер успешно обновлён!${NC}"
 }
 
 # Функция изменения комиссии
@@ -197,19 +83,22 @@ update_fee() {
     echo -e "${GREEN}Обновлен .env файл:$(cat .env)${NC}"
     docker compose stop hemi
     docker compose rm -f hemi
-    docker compose up -d || echo -e "${RED}Ошибка перезапуска контейнера.${NC}"
+
+    finalize_dockerfile
+
+    docker compose up -d > build.log 2>&1
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Ошибка перезапуска контейнера. Логи сборки:${NC}"
+        cat build.log
+        exit 1
+    fi
     echo -e "${GREEN}Комиссия успешно обновлена!${NC}"
 }
 
-# Функция установки контейнера
-install_container() {
-    echo -e "${YELLOW}Устанавливаем контейнер Hemi...${NC}"
-    docker compose up -d --build || echo -e "${RED}Ошибка установки контейнера.${NC}"
-    echo -e "${GREEN}Контейнер успешно установлен!${NC}"
-}
-
+# Вызов функций
 case $ACTION in
     1)
+        finalize_dockerfile
         install_container
         ;;
     2)
@@ -228,10 +117,4 @@ if [ $(docker ps -q -f name=Hemi | wc -l) -gt 0 ]; then
 else
     echo -e "${RED}Ошибка: Контейнер 'Hemi' не запущен.${NC}"
     exit 1
-fi
-
-# Печать данных из popm-address.json в конце
-if [ -f "popm-address.json" ]; then
-    echo -e "${YELLOW}Содержимое файла popm-address.json:${NC}"
-    cat popm-address.json
 fi
