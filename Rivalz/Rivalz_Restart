@@ -1,0 +1,68 @@
+#!/bin/bash
+
+# Немедленно завершить выполнение при ошибке
+set -e
+
+# Параметры
+NODE_NAME="Rivalz"
+RESTART_SCRIPT="/root/Rivalz/Restart.sh"
+LOG_FILE="/root/Rivalz/restart_rivalz.log"
+CRON_JOB="0 */2 * * * $RESTART_SCRIPT >> $LOG_FILE 2>&1"
+
+echo "=== Настройка автоматического перезапуска Rivalz ==="
+
+# Проверяем существование скрипта перезапуска
+if [ ! -f "$RESTART_SCRIPT" ]; then
+    echo "Создание скрипта для перезапуска процесса..."
+    cat > $RESTART_SCRIPT <<'EOF'
+#!/bin/bash
+
+# Немедленно завершить выполнение при ошибке
+set -e
+
+# Имя контейнера
+NODE_NAME="Rivalz"
+
+echo "=== Перезапуск процесса Rivalz ==="
+
+# Проверяем, работает ли контейнер
+if [ "$(docker ps -q -f name=^${NODE_NAME}$)" ]; then
+    echo "Контейнер '$NODE_NAME' найден. Продолжаем..."
+else
+    echo "Ошибка: Контейнер '$NODE_NAME' не запущен. Запустите его и повторите попытку."
+    exit 1
+fi
+
+# Останавливаем текущую сессию tmux
+echo "Остановка текущей сессии tmux..."
+docker exec $NODE_NAME bash -c "tmux kill-session -t rivalz_session" || echo "Сессия tmux не найдена. Продолжаем..."
+
+# Перезапуск процесса
+echo "Перезапуск процесса 'rivalz run'..."
+docker exec $NODE_NAME bash -c "tmux new-session -d -s rivalz_session 'rivalz run | tee /app/node.log'"
+
+echo "=== Процесс Rivalz успешно перезапущен ==="
+EOF
+
+    # Делаем скрипт исполняемым
+    chmod +x $RESTART_SCRIPT
+    echo "Скрипт для перезапуска создан: $RESTART_SCRIPT"
+else
+    echo "Скрипт для перезапуска уже существует: $RESTART_SCRIPT"
+fi
+
+# Немедленный перезапуск процесса
+echo "Перезапуск процесса Rivalz..."
+$RESTART_SCRIPT
+
+# Добавление задания в crontab
+echo "Добавление задания в crontab..."
+if crontab -l 2>/dev/null | grep -q "$RESTART_SCRIPT"; then
+    echo "Задание уже существует в crontab. Пропускаем добавление."
+else
+    (crontab -l 2>/dev/null; echo "$CRON_JOB") | crontab -
+    echo "Задание добавлено в crontab: $CRON_JOB"
+fi
+
+echo "=== Установка завершена ==="
+echo "Логи выполнения будут доступны в файле $LOG_FILE"
