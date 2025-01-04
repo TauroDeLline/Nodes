@@ -29,93 +29,137 @@ if [ $(docker ps -a -q -f name=Hemi | wc -l) -gt 0 ]; then
         echo -e "${RED}Операция отменена пользователем.${NC}"
         exit 1
     fi
-
-    echo -e "${YELLOW}Останавливаем и удаляем контейнер Hemi...${NC}"
     docker compose stop hemi
     docker compose rm -f hemi
     docker rmi hemi-hemi --force
-    echo -e "${GREEN}Контейнер и образ Hemi успешно удалены.${NC}"
+    echo -e "${GREEN}Контейнер Hemi успешно удален.${NC}"
 fi
+
+# Меню выбора действия
+echo -e "${YELLOW}Выберите действие:${NC}"
+echo "1) Установить контейнер"
+echo "2) Обновить контейнер до последней версии"
+echo "3) Обновить комиссию"
+read -p "Введите номер действия: " ACTION
+
+# Проверка выбранного действия
+case $ACTION in
+    1)
+        echo -e "${YELLOW}Начало установки контейнера.${NC}"
+        ;;
+    2)
+        echo -e "${YELLOW}Начало обновления контейнера.${NC}"
+        ;;
+    3)
+        echo -e "${YELLOW}Начало обновления комиссии.${NC}"
+        ;;
+    *)
+        echo -e "${RED}Ошибка: неверный выбор действия!${NC}"
+        exit 1
+        ;;
+esac
 
 # Прямая ссылка на бинарник
 BINARY_URL="https://github.com/hemilabs/heminetwork/releases/download/v0.8.0/heminetwork_v0.8.0_linux_amd64.tar.gz"
 
-# Ввод переменных
-read -p "Введите приватный ключ (оставьте пустым для генерации нового) (POPM_BTC_PRIVKEY): " PRIV_KEY
-read -p "Укажите желаемый размер комиссии (минимум 50) (POPM_STATIC_FEE): " FEE
+# Функция для установки контейнера
+install_container() {
+    read -p "Введите приватный ключ (оставьте пустым для генерации нового) (POPM_BTC_PRIVKEY): " PRIV_KEY
+    read -p "Укажите желаемый размер комиссии (минимум 50) (POPM_STATIC_FEE): " FEE
 
-# Проверка минимального значения комиссии
-if [ "$FEE" -lt 50 ]; then
-    echo -e "${RED}Ошибка: комиссия должна быть не меньше 50!${NC}"
-    exit 1
-fi
-
-# Если приватный ключ не указан, генерируем новый
-if [ -z "$PRIV_KEY" ]; then
-    echo -e "${YELLOW}Приватный ключ не указан. Генерация нового ключа...${NC}"
-
-    # Создание временного Dockerfile для генерации ключа
-    cat <<EOT > Dockerfile
-FROM ubuntu:22.04
-
-RUN apt-get update && apt-get install -y wget tar bash jq && rm -rf /var/lib/apt/lists/*
-WORKDIR /app
-
-RUN wget -O heminetwork_linux_amd64.tar.gz "$BINARY_URL" && \
-    tar --strip-components=1 -xzvf heminetwork_linux_amd64.tar.gz && \
-    rm heminetwork_linux_amd64.tar.gz
-
-CMD ["/app/keygen", "-secp256k1", "-json", "-net=testnet"]
-EOT
-
-    # Сборка и запуск временного контейнера
-    docker build -t hemi-keygen .
-    docker run --rm hemi-keygen > popm-address.json
-
-    if [ ! -f "popm-address.json" ]; then
-        echo -e "${RED}Ошибка: файл popm-address.json не создан.${NC}"
+    if [ "$FEE" -lt 50 ]; then
+        echo -e "${RED}Ошибка: комиссия должна быть не меньше 50!${NC}"
         exit 1
     fi
 
-    PRIV_KEY=$(jq -r '.private_key' popm-address.json)
-    PUBKEY_HASH=$(jq -r '.pubkey_hash' popm-address.json)
+    if [ -z "$PRIV_KEY" ]; then
+        echo -e "${YELLOW}Приватный ключ не указан. Генерация нового ключа...${NC}"
 
-    echo -e "${GREEN}Новый ключ сгенерирован!${NC}"
-    echo -e "${YELLOW}Ваш pubkey_hash (BTC адрес): $PUBKEY_HASH${NC}"
-    echo -e "${YELLOW}Ваш приватный ключ: $PRIV_KEY${NC}"
-    echo -e "${YELLOW}Сохраните файл popm-address.json для дальнейшего использования.${NC}"
-fi
+        # Генерация ключа
+        cat <<EOT > Dockerfile
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y wget tar bash jq && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+RUN wget -O heminetwork_linux_amd64.tar.gz "$BINARY_URL" && tar --strip-components=1 -xzvf heminetwork_linux_amd64.tar.gz && rm heminetwork_linux_amd64.tar.gz
+CMD ["/app/keygen", "-secp256k1", "-json", "-net=testnet"]
+EOT
 
-# Создание .env
-cat <<EOT > .env
+        docker build -t hemi-keygen .
+        docker run --rm hemi-keygen > popm-address.json
+
+        if [ ! -f "popm-address.json" ]; then
+            echo -e "${RED}Ошибка: файл popm-address.json не создан.${NC}"
+            exit 1
+        fi
+
+        PRIV_KEY=$(jq -r '.private_key' popm-address.json)
+        PUBKEY_HASH=$(jq -r '.pubkey_hash' popm-address.json)
+
+        echo -e "${GREEN}Новый ключ сгенерирован!${NC}"
+        echo -e "${YELLOW}Ваш pubkey_hash: $PUBKEY_HASH${NC}"
+    fi
+
+    # Создание .env
+    cat <<EOT > .env
 POPM_BTC_PRIVKEY=$PRIV_KEY
 POPM_STATIC_FEE=$FEE
 POPM_BFG_URL=wss://testnet.rpc.hemi.network/v1/ws/public
 EOT
-echo -e "${GREEN}.env файл создан.${NC}"
 
-# Восстановление Dockerfile для запуска popmd
-cat <<EOT > Dockerfile
+    # Создание основного Dockerfile
+    cat <<EOT > Dockerfile
 FROM ubuntu:22.04
-
 RUN apt-get update && apt-get install -y wget tar bash jq && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-
-RUN wget -O heminetwork_linux_amd64.tar.gz "$BINARY_URL" && \
-    tar --strip-components=1 -xzvf heminetwork_linux_amd64.tar.gz && \
-    rm heminetwork_linux_amd64.tar.gz
-
+RUN wget -O heminetwork_linux_amd64.tar.gz "$BINARY_URL" && tar --strip-components=1 -xzvf heminetwork_linux_amd64.tar.gz && rm heminetwork_linux_amd64.tar.gz
 CMD ["/app/popmd"]
 EOT
 
-# Запуск контейнера
-echo -e "${YELLOW}Устанавливаем контейнер Hemi...${NC}"
-docker compose up -d --build
+    docker compose up -d --build
+}
+
+# Функция для обновления контейнера
+update_container() {
+    echo -e "${YELLOW}Обновляем контейнер Hemi...${NC}"
+    docker compose down
+    docker compose up -d --build
+}
+
+# Функция для обновления комиссии
+update_fee() {
+    if [ ! -f ".env" ]; then
+        echo -e "${RED}Ошибка: файл .env не найден. Установите контейнер.${NC}"
+        exit 1
+    fi
+
+    read -p "Введите новое значение комиссии (минимум 50): " NEW_FEE
+    if [ "$NEW_FEE" -lt 50 ]; then
+        echo -e "${RED}Ошибка: комиссия должна быть не меньше 50!${NC}"
+        exit 1
+    fi
+
+    sed -i "s|POPM_STATIC_FEE=.*|POPM_STATIC_FEE=$NEW_FEE|" .env
+    docker compose stop hemi
+    docker compose up -d
+    echo -e "${GREEN}Комиссия успешно обновлена.${NC}"
+}
+
+# Выполнение выбранного действия
+case $ACTION in
+    1)
+        install_container
+        ;;
+    2)
+        update_container
+        ;;
+    3)
+        update_fee
+        ;;
+esac
 
 # Проверка статуса контейнера
 if [ $(docker ps -q -f name=Hemi | wc -l) -gt 0 ]; then
-    echo -e "${GREEN}Контейнер Hemi успешно запущен!${NC}"
-    docker logs -f Hemi
+    echo -e "${GREEN}Контейнер Hemi успешно запущен.${NC}"
 else
     echo -e "${RED}Ошибка: контейнер Hemi не запущен.${NC}"
     exit 1
