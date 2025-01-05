@@ -7,7 +7,7 @@
 ## Запуск
 
    ```bash
-   wget -O Hemi_Install https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Hemi/Hemi_Install && chmod +x Hemi_Install && ./Hemi_Install
+   wget --no-cache -q -O Hemi_Install https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Hemi/Hemi_Install && chmod +x Hemi_Install && ./Hemi_Install
    ```
 
 
