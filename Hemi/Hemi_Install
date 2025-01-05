@@ -6,7 +6,7 @@ YELLOW='\033[0;33m'
 RED='\033[0;31m'
 NC='\033[0m' # Сброс цвета
 
-# Проверка наличия Docker и Docker Compose
+# Проверка Docker и Docker Compose
 if ! command -v docker &> /dev/null; then
     echo -e "${RED}Ошибка: Docker не установлен.${NC}"
     exit 1
@@ -21,20 +21,6 @@ if ! docker compose version &> /dev/null; then
     fi
 fi
 
-# Проверка наличия контейнера Hemi
-if [ $(docker ps -a -q -f name=Hemi | wc -l) -gt 0 ]; then
-    echo -e "${YELLOW}Контейнер Hemi уже существует.${NC}"
-    read -p "Хотите удалить существующий контейнер и установить новый? (y/n): " CONFIRM
-    if [ "$CONFIRM" != "y" ]; then
-        echo -e "${RED}Операция отменена пользователем.${NC}"
-        exit 1
-    fi
-    docker compose stop hemi
-    docker compose rm -f hemi
-    docker rmi hemi-hemi --force
-    echo -e "${GREEN}Контейнер Hemi успешно удален.${NC}"
-fi
-
 # Меню выбора действия
 echo -e "${YELLOW}Выберите действие:${NC}"
 echo "1) Установить контейнер"
@@ -42,16 +28,16 @@ echo "2) Обновить контейнер до последней верси�
 echo "3) Обновить комиссию"
 read -p "Введите номер действия: " ACTION
 
-# Проверка выбранного действия
+# Проверка выбора
 case $ACTION in
     1)
         echo -e "${YELLOW}Начало установки контейнера.${NC}"
         ;;
     2)
-        echo -e "${YELLOW}Начало обновления контейнера.${NC}"
+        echo -e "${YELLOW}Обновление контейнера...${NC}"
         ;;
     3)
-        echo -e "${YELLOW}Начало обновления комиссии.${NC}"
+        echo -e "${YELLOW}Обновление комиссии...${NC}"
         ;;
     *)
         echo -e "${RED}Ошибка: неверный выбор действия!${NC}"
@@ -62,7 +48,41 @@ esac
 # Прямая ссылка на бинарник
 BINARY_URL="https://github.com/hemilabs/heminetwork/releases/download/v0.8.0/heminetwork_v0.8.0_linux_amd64.tar.gz"
 
-# Функция для установки контейнера
+# Генерация `.env`-файла
+generate_env() {
+    echo -e "${YELLOW}Создаем .env файл...${NC}"
+    cat <<EOT > .env
+POPM_BTC_PRIVKEY=$PRIV_KEY
+POPM_STATIC_FEE=$FEE
+POPM_BFG_URL=wss://testnet.rpc.hemi.network/v1/ws/public
+EOT
+    echo -e "${GREEN}.env файл создан:${NC}"
+    cat .env
+}
+
+# Создание docker-compose.yml
+generate_docker_compose() {
+    echo -e "${YELLOW}Создаем docker-compose.yml...${NC}"
+    cat <<EOT > docker-compose.yml
+version: '3.8'
+
+services:
+  hemi:
+    build: .
+    container_name: Hemi
+    restart: always
+    env_file:
+      - .env
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+EOT
+    echo -e "${GREEN}docker-compose.yml создан.${NC}"
+}
+
+# Установка контейнера
 install_container() {
     read -p "Введите приватный ключ (оставьте пустым для генерации нового) (POPM_BTC_PRIVKEY): " PRIV_KEY
     read -p "Укажите желаемый размер комиссии (минимум 50) (POPM_STATIC_FEE): " FEE
@@ -73,9 +93,8 @@ install_container() {
     fi
 
     if [ -z "$PRIV_KEY" ]; then
-        echo -e "${YELLOW}Приватный ключ не указан. Генерация нового ключа...${NC}"
+        echo -e "${YELLOW}Приватный ключ не указан. Генерация нового...${NC}"
 
-        # Генерация ключа
         cat <<EOT > Dockerfile
 FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y wget tar bash jq && rm -rf /var/lib/apt/lists/*
@@ -87,26 +106,16 @@ EOT
         docker build -t hemi-keygen .
         docker run --rm hemi-keygen > popm-address.json
 
-        if [ ! -f "popm-address.json" ]; then
-            echo -e "${RED}Ошибка: файл popm-address.json не создан.${NC}"
-            exit 1
-        fi
-
         PRIV_KEY=$(jq -r '.private_key' popm-address.json)
         PUBKEY_HASH=$(jq -r '.pubkey_hash' popm-address.json)
 
-        echo -e "${GREEN}Новый ключ сгенерирован!${NC}"
+        echo -e "${GREEN}Новый ключ сгенерирован:${NC}"
         echo -e "${YELLOW}Ваш pubkey_hash: $PUBKEY_HASH${NC}"
     fi
 
-    # Создание .env
-    cat <<EOT > .env
-POPM_BTC_PRIVKEY=$PRIV_KEY
-POPM_STATIC_FEE=$FEE
-POPM_BFG_URL=wss://testnet.rpc.hemi.network/v1/ws/public
-EOT
+    generate_env
+    generate_docker_compose
 
-    # Создание основного Dockerfile
     cat <<EOT > Dockerfile
 FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y wget tar bash jq && rm -rf /var/lib/apt/lists/*
@@ -118,20 +127,15 @@ EOT
     docker compose up -d --build
 }
 
-# Функция для обновления контейнера
+# Обновление контейнера
 update_container() {
-    echo -e "${YELLOW}Обновляем контейнер Hemi...${NC}"
+    echo -e "${YELLOW}Обновляем контейнер...${NC}"
     docker compose down
     docker compose up -d --build
 }
 
-# Функция для обновления комиссии
+# Обновление комиссии
 update_fee() {
-    if [ ! -f ".env" ]; then
-        echo -e "${RED}Ошибка: файл .env не найден. Установите контейнер.${NC}"
-        exit 1
-    fi
-
     read -p "Введите новое значение комиссии (минимум 50): " NEW_FEE
     if [ "$NEW_FEE" -lt 50 ]; then
         echo -e "${RED}Ошибка: комиссия должна быть не меньше 50!${NC}"
@@ -139,25 +143,18 @@ update_fee() {
     fi
 
     sed -i "s|POPM_STATIC_FEE=.*|POPM_STATIC_FEE=$NEW_FEE|" .env
-    docker compose stop hemi
     docker compose up -d
     echo -e "${GREEN}Комиссия успешно обновлена.${NC}"
 }
 
-# Выполнение выбранного действия
+# Выполнение действия
 case $ACTION in
-    1)
-        install_container
-        ;;
-    2)
-        update_container
-        ;;
-    3)
-        update_fee
-        ;;
+    1) install_container ;;
+    2) update_container ;;
+    3) update_fee ;;
 esac
 
-# Проверка статуса контейнера
+# Проверка контейнера
 if [ $(docker ps -q -f name=Hemi | wc -l) -gt 0 ]; then
     echo -e "${GREEN}Контейнер Hemi успешно запущен.${NC}"
 else
