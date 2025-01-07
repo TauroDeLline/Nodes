@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+#
+# Скрипт установки OpenLedger Node (v1.0.0) на Ubuntu 22,
+# без удаления/переустановки Docker и без затрагивания других контейнеров.
+# После завершения автоматически заходит в screen-сессию с запущенной нодой.
+
+set -e  # при ошибках скрипт прерывается; уберите, если хотите игнорировать ошибки
+
+# 1. Установить зависимости для Electron-приложений (OpenLedger Node):
+echo "=== Устанавливаем зависимости для OpenLedger Node ==="
+sudo apt update
+sudo apt install -y \
+    libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 xdg-utils \
+    libatspi2.0-0 libsecret-1-0 libgbm1 libasound2 \
+    unzip screen desktop-file-utils
+
+# 2. Скачать и распаковать OpenLedger Node
+echo "=== Скачиваем архив OpenLedger Node (1.0.0) ==="
+wget -O openledger-node-1.0.0-linux.zip \
+    https://cdn.openledger.xyz/openledger-node-1.0.0-linux.zip
+
+echo "=== Распаковываем архив ==="
+unzip -o openledger-node-1.0.0-linux.zip
+
+# 3. Установить .deb пакет OpenLedger Node
+echo "=== Устанавливаем OpenLedger Node (.deb) ==="
+sudo dpkg -i openledger-node-1.0.0.deb || true
+sudo apt-get install -f -y
+sudo dpkg --configure -a || true
+
+# 4. Запустить ноду в screen-сессии (detach), затем присоединиться
+echo "=== Запускаем OpenLedger Node в screen-сессии openledger_node ==="
+screen -dmS openledger_node openledger-node --no-sandbox
+
+# (Дополнительно можете добавить --disable-gpu, если нужно)
+# screen -dmS openledger_node openledger-node --no-sandbox --disable-gpu
+
+sleep 1
+
+echo "=== Подключаемся к screen-сессии. Для выхода нажмите Ctrl+A D ==="
+screen -r openledger_node
