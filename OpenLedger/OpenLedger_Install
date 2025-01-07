@@ -100,10 +100,10 @@ OL_DEB="openledger-node-1.0.0.deb"
 OL_ZIP="openledger-node-1.0.0-linux.zip"
 
 # Если нужно скачивать — раскомментируйте. Или если заранее кладёте .deb в папку — уже хорошо.
-# if [ ! -f "$OL_ZIP" ] && [ ! -f "$OL_DEB" ]; then
-#   echo "=== Скачиваем OpenLedger Node (1.0.0) ==="
-#   wget https://cdn.openledger.xyz/openledger-node-1.0.0-linux.zip -O "$OL_ZIP"
-# fi
+ if [ ! -f "$OL_ZIP" ] && [ ! -f "$OL_DEB" ]; then
+   echo "=== Скачиваем OpenLedger Node (1.0.0) ==="
+   wget https://cdn.openledger.xyz/openledger-node-1.0.0-linux.zip -O "$OL_ZIP"
+ fi
 
 if [ -f "$OL_ZIP" ] && [ ! -f "$OL_DEB" ]; then
   echo "=== Распаковываем $OL_ZIP ==="
@@ -146,7 +146,7 @@ echo "=== Запускаем ноду в screen-сессии openledger_node ===
 screen -dmS openledger_node openledger-node --no-sandbox
 
 # Если хотите сразу "войти" в эту сессию:
-# screen -r openledger_node
+screen -r openledger_node
 
 echo "=== Скрипт завершён. Нода запущена в background-сессии screen openledger_node ==="
 echo "Чтобы подключиться: screen -r openledger_node"
