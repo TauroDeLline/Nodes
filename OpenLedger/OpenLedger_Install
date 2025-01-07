@@ -1,41 +1,152 @@
 #!/usr/bin/env bash
 #
-# Скрипт установки OpenLedger Node (v1.0.0) на Ubuntu 22,
-# без удаления/переустановки Docker и без затрагивания других контейнеров.
-# После завершения автоматически заходит в screen-сессию с запущенной нодой.
+# Универсальный скрипт установки OpenLedger Node на Ubuntu (и её производные),
+# который не трогает существующие Docker/контейнеры, ждёт освобождения dpkg lock,
+# и пытается найти подходящую версию libasound2.
+#
+# Предполагается, что вы запускаете скрипт в папке, где будет лежать
+# openledger-node-1.0.0.deb или .zip (мы его скачаем, если нужно).
+#
+# Запускает ноду в screen-сессии openledger_node по завершении.
 
-set -e  # при ошибках скрипт прерывается; уберите, если хотите игнорировать ошибки
+set -e
 
-# 1. Установить зависимости для Electron-приложений (OpenLedger Node):
-echo "=== Устанавливаем зависимости для OpenLedger Node ==="
-sudo apt update
-sudo apt install -y \
-    libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 xdg-utils \
-    libatspi2.0-0 libsecret-1-0 libgbm1 libasound2 \
-    unzip screen desktop-file-utils
+# ------------------------------------------------------------------------------
+# 0. Функция ожидания освобождения dpkg/apt lock.
+#    Если запущен другой apt/dpkg, дождёмся завершения, чтобы избежать "Could not get lock".
+# ------------------------------------------------------------------------------
+function wait_for_apt_lock() {
+  echo "=== Проверяем, не заняты ли /var/lib/dpkg/lock-frontend или /var/lib/apt/lists/lock ==="
+  local WAIT_SECONDS=0
+  local MAX_WAIT=120  # максимум 2 минуты ждём
 
-# 2. Скачать и распаковать OpenLedger Node
-echo "=== Скачиваем архив OpenLedger Node (1.0.0) ==="
-wget -O openledger-node-1.0.0-linux.zip \
-    https://cdn.openledger.xyz/openledger-node-1.0.0-linux.zip
+  while sudo fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock >/dev/null 2>&1; do
+    if [ $WAIT_SECONDS -gt $MAX_WAIT ]; then
+      echo "Ошибка: apt/dpkg lock не освободился за $MAX_WAIT секунд."
+      echo "Прервём установку, чтобы не рисковать порчей пакетов."
+      exit 1
+    fi
+    echo "Процесс apt/dpkg ещё работает... ждём..."
+    sleep 5
+    ((WAIT_SECONDS+=5))
+  done
+}
 
-echo "=== Распаковываем архив ==="
-unzip -o openledger-node-1.0.0-linux.zip
+# ------------------------------------------------------------------------------
+# 1. Ждём освобождения apt/dpkg lock
+# ------------------------------------------------------------------------------
+wait_for_apt_lock
 
-# 3. Установить .deb пакет OpenLedger Node
-echo "=== Устанавливаем OpenLedger Node (.deb) ==="
-sudo dpkg -i openledger-node-1.0.0.deb || true
+# ------------------------------------------------------------------------------
+# 2. Обновляем список пакетов
+# ------------------------------------------------------------------------------
+echo "=== Обновляем список пакетов ==="
+sudo apt-get update -y
+
+# ------------------------------------------------------------------------------
+# 3. Устанавливаем базовые зависимости, кроме libasound2 (обработаем отдельно)
+# ------------------------------------------------------------------------------
+echo "=== Устанавливаем базовые зависимости (без libasound2) ==="
+# Сформируем массив: некоторые пакеты иногда переименованы. Пробуем основные названия.
+BASIC_DEPS=(
+  libgtk-3-0
+  libnotify4
+  libnss3
+  libxss1
+  libxtst6
+  xdg-utils
+  libatspi2.0-0
+  libsecret-1-0
+  libgbm1
+  unzip
+  screen
+  desktop-file-utils
+)
+
+# Попробуем установить базовые зависимости, если не получится — скрипт упадёт на set -e
+sudo apt-get install -y "${BASIC_DEPS[@]}" || true
+
+# ------------------------------------------------------------------------------
+# 4. Пробуем установить libasound2 или альтернативы
+# ------------------------------------------------------------------------------
+function try_install_asound() {
+  local candidates=( "libasound2" "libasound2t64" "liboss4-salsa-asound2" )
+  local installed_success=false
+
+  for pkg in "${candidates[@]}"; do
+    echo "Пробуем установить пакет '${pkg}'..."
+    if sudo apt-get install -y "$pkg"; then
+      echo "Успешно установили '${pkg}'!"
+      installed_success=true
+      break
+    else
+      echo "Не удалось установить '${pkg}'. Пробуем следующий..."
+    fi
+  done
+
+  if [ "$installed_success" = false ]; then
+    echo "ВНИМАНИЕ: Не удалось найти ни одну из реализаций libasound2!"
+    echo "Скрипт продолжит работу, но Electron-приложения (OpenLedger Node) могут не работать со звуком."
+  fi
+}
+
+echo "=== Пытаемся установить libasound2 (или аналог) ==="
+try_install_asound
+
+# ------------------------------------------------------------------------------
+# 5. Скачиваем (если нет) и устанавливаем OpenLedger Node
+# ------------------------------------------------------------------------------
+OL_DEB="openledger-node-1.0.0.deb"
+OL_ZIP="openledger-node-1.0.0-linux.zip"
+
+# Если нужно скачивать — раскомментируйте. Или если заранее кладёте .deb в папку — уже хорошо.
+# if [ ! -f "$OL_ZIP" ] && [ ! -f "$OL_DEB" ]; then
+#   echo "=== Скачиваем OpenLedger Node (1.0.0) ==="
+#   wget https://cdn.openledger.xyz/openledger-node-1.0.0-linux.zip -O "$OL_ZIP"
+# fi
+
+if [ -f "$OL_ZIP" ] && [ ! -f "$OL_DEB" ]; then
+  echo "=== Распаковываем $OL_ZIP ==="
+  unzip -o "$OL_ZIP"
+fi
+
+# Теперь в папке должен появиться openledger-node-1.0.0.deb
+if [ ! -f "$OL_DEB" ]; then
+  echo "ОШИБКА: Не найден $OL_DEB (openledger-node-1.0.0.deb)."
+  echo "Положите .deb или .zip в текущую папку, либо раскомментируйте скачивание."
+  exit 1
+fi
+
+echo "=== Устанавливаем пакет $OL_DEB ==="
+wait_for_apt_lock
+sudo dpkg -i "$OL_DEB" || true
+
+# Если есть мелкие несостыковки зависимостей:
+wait_for_apt_lock
 sudo apt-get install -f -y
+
+# На всякий случай ещё раз:
+wait_for_apt_lock
 sudo dpkg --configure -a || true
 
-# 4. Запустить ноду в screen-сессии (detach), затем присоединиться
-echo "=== Запускаем OpenLedger Node в screen-сессии openledger_node ==="
+echo "=== OpenLedger Node установлен. ==="
+
+# ------------------------------------------------------------------------------
+# 6. Запускаем ноду в screen-сессии
+# ------------------------------------------------------------------------------
+# Сначала проверим, не висит ли старая сессия openledger_node
+EXISTING_SCREEN=$(screen -ls | grep openledger_node || true)
+if [ -n "$EXISTING_SCREEN" ]; then
+  echo "Старую сессию openledger_node убьём..."
+  session_id=$(echo "$EXISTING_SCREEN" | awk '{print $1}' | cut -d. -f1)
+  screen -S "$session_id" -X quit || true
+fi
+
+echo "=== Запускаем ноду в screen-сессии openledger_node ==="
 screen -dmS openledger_node openledger-node --no-sandbox
 
-# (Дополнительно можете добавить --disable-gpu, если нужно)
-# screen -dmS openledger_node openledger-node --no-sandbox --disable-gpu
+# Если хотите сразу "войти" в эту сессию:
+# screen -r openledger_node
 
-sleep 1
-
-echo "=== Подключаемся к screen-сессии. Для выхода нажмите Ctrl+A D ==="
-screen -r openledger_node
+echo "=== Скрипт завершён. Нода запущена в background-сессии screen openledger_node ==="
+echo "Чтобы подключиться: screen -r openledger_node"
