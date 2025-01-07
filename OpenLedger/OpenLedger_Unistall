@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+#
+# Скрипт удаления OpenLedger Node (v1.0.0) и всех связанных с ней данных:
+#  - Останавливает/удаляет Docker-контейнеры/образы openledgerhub/worker:1.0.0
+#  - Удаляет сам пакет openledger-node (.deb)
+#  - Удаляет остаточные конфигурации и распакованные файлы
+# НЕ трогает другие контейнеры и не удаляет Docker.
+# Запускать от root или через sudo.
+
+set -e
+
+echo "=== 1. Останавливаем и удаляем контейнеры/образы openledgerhub/worker:1.0.0 (если есть) ==="
+# Ищем все контейнеры на базе образа openledgerhub/worker:1.0.0
+WORKER_CONTAINERS=$(docker ps -a --filter "ancestor=openledgerhub/worker:1.0.0" -q || true)
+
+if [ -n "$WORKER_CONTAINERS" ]; then
+  echo "Найдены контейнеры OpenLedger worker:"
+  echo "$WORKER_CONTAINERS"
+  echo "Останавливаем..."
+  docker stop $WORKER_CONTAINERS || true
+  echo "Удаляем..."
+  docker rm $WORKER_CONTAINERS || true
+else
+  echo "Контейнеров openledgerhub/worker:1.0.0 не найдено."
+fi
+
+# Удаляем сам образ (если он не нужен)
+if docker images | grep -q "openledgerhub/worker\s*1.0.0"; then
+  echo "Удаляем образ openledgerhub/worker:1.0.0..."
+  docker rmi openledgerhub/worker:1.0.0 || true
+else
+  echo "Образ openledgerhub/worker:1.0.0 не найден или уже удалён."
+fi
+
+echo "=== 2. Удаляем установленный пакет openledger-node ==="
+if dpkg -l | grep -q "openledger-node"; then
+  sudo apt remove -y openledger-node || true
+  # Или, если удобнее:
+  # sudo dpkg -r openledger-node || true
+
+  # Подчистим зависимости, если остались:
+  sudo apt autoremove -y
+else
+  echo "Пакет openledger-node не найден (возможно, уже удалён)."
+fi
+
+echo "=== 3. Удаляем остаточные файлы/папки .deb, .zip и т.д. ==="
+
+# Путь к .deb и .zip (если вы скачивали в текущую директорию)
+if [ -f "openledger-node-1.0.0.deb" ]; then
+  rm -f openledger-node-1.0.0.deb
+  echo "Файл openledger-node-1.0.0.deb удалён."
+fi
+
+if [ -f "openledger-node-1.0.0-linux.zip" ]; then
+  rm -f openledger-node-1.0.0-linux.zip
+  echo "Файл openledger-node-1.0.0-linux.zip удалён."
+fi
+
+# Папка после распаковки
+if [ -d "openledger-node-1.0.0-linux" ]; then
+  rm -rf openledger-node-1.0.0-linux
+  echo "Папка openledger-node-1.0.0-linux удалена."
+fi
+
+# Папка в /opt (если там ставилось), проверим существование
+if [ -d "/opt/OpenLedger Node" ]; then
+  sudo rm -rf "/opt/OpenLedger Node"
+  echo "Папка /opt/OpenLedger Node удалена."
+fi
+
+echo "=== 4. Удаляем конфиги из ~/.config (если есть) ==="
+# Папка ~/.config/OpenLedger Node
+if [ -d "$HOME/.config/OpenLedger Node" ]; then
+  rm -rf "$HOME/.config/OpenLedger Node"
+  echo "Удалена папка $HOME/.config/OpenLedger Node"
+fi
+
+# Папка ~/.config/opl (если гайд создавал)
+if [ -d "$HOME/.config/opl" ]; then
+  rm -rf "$HOME/.config/opl"
+  echo "Удалена папка $HOME/.config/opl"
+fi
+
+# Папка ~/OpenLedger (если кто-то распаковывал туда)
+if [ -d "$HOME/OpenLedger" ]; then
+  rm -rf "$HOME/OpenLedger"
+  echo "Удалена папка $HOME/OpenLedger"
+fi
+
+echo "=== Удаление OpenLedger Node завершено. ==="
+echo "Если было запущено через screen, можно проверить screen-сессии:"
+echo "  screen -ls"
+echo "Если остались вопросы — проверьте вручную наличие лишних директорий/файлов."
