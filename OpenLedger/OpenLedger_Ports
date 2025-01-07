@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+#
+# Скрипт:
+# 1) Перезаписывает /root/.config/opl/docker-compose.yaml с нужными портами (8090:8080, 8009:8000).
+# 2) Перезаписывает /root/.config/opl/config.yaml (заменяет порт 8000 на 8009).
+# 3) Убивает старую screen-сессию "openledger_node" (если есть).
+# 4) Создаёт новую screen-сессию, в которой запускается нода, и автоматически к ней подключается.
+
+set -e
+
+echo "=== Шаг 1. Создаём /root/.config/opl, если не существует ==="
+mkdir -p /root/.config/opl
+
+echo "=== Шаг 2. Перезаписываем /root/.config/opl/docker-compose.yaml ==="
+cat <<EOF > /root/.config/opl/docker-compose.yaml
+services:
+  worker:
+    image: openledgerhub/worker:1.0.0
+    ports:
+      - "8090:8080"
+      - "5555:5555"
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./keystore/keystore.json:/app/keystore.json
+    env_file:
+      - .env
+    networks:
+      - worker-network
+  scraper:
+    image: openledgerhub/scraper:1.0.0
+    ports:
+      - "8009:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - worker-network
+    depends_on:
+      - worker
+networks:
+  worker-network:
+    name: worker-network
+EOF
+
+echo "=== Шаг 3. Перезаписываем /root/.config/opl/config.yaml ==="
+cat <<EOF > /root/.config/opl/config.yaml
+#LLM
+llm_platform: "ollama" # exo or ollama
+llm_url: "http://127.0.0.1:11434" # Ollama
+# llm_url: "http://127.0.0.1:8000" # exo
+default_model: "llama3.2:1b"
+
+# DB Internal
+job_db: ".db/jobs.db"
+result_db: ".db/results.db"
+
+# Worker
+worker_identity: ""
+# worker_host: "tcp://0.0.0.0:5555"
+orchestrator_address: "tcp://msgtn.openledger.xyz:9999"
+
+# Blockchain
+keystore_file: "keystore.json"
+
+scrape_url: http://opl_scraper:8009
+EOF
+
+echo "=== Шаг 4. Завершаем старую screen-сессию openledger_node (если есть) ==="
+EXISTING_SCREEN=$(screen -ls | grep openledger_node || true)
+if [ -n "$EXISTING_SCREEN" ]; then
+  echo "Найдена старая сессия:"
+  echo "$EXISTING_SCREEN"
+  session_id=$(echo "$EXISTING_SCREEN" | awk '{print $1}' | cut -d. -f1)
+  echo "Убиваем screen с ID: $session_id"
+  screen -S "$session_id" -X quit || true
+fi
+
+echo "=== Шаг 5. Запускаем новую screen-сессию и сразу в неё входим ==="
+# Запускаем ноду (фоном)
+screen -dmS openledger_node openledger-node --no-sandbox
+# Делаем небольшую паузу, чтобы screen успел стартовать
+sleep 1
+# Подключаемся к сессии
+screen -r openledger_node
