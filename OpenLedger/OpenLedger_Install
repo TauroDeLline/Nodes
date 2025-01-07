@@ -1,87 +1,41 @@
 #!/usr/bin/env bash
 #
-# "Полный" скрипт для headless-установки OpenLedger Node (v1.0.0) на Ubuntu,
-# с постоянным Xvfb (виртуальный дисплей), чтобы Electron-приложение работало
-# даже после выхода из SSH. В конце автоматически подключается к screen-сессии.
+# Скрипт установки OpenLedger Node (v1.0.0) на Ubuntu 22,
+# без удаления/переустановки Docker и без затрагивания других контейнеров.
+# После завершения автоматически заходит в screen-сессию с запущенной нодой.
 
-set -e
+set -e  # при ошибках скрипт прерывается; уберите, если хотите игнорировать ошибки
 
-echo "=== [1/8] Устанавливаем зависимости (включая Xvfb) ==="
+# 1. Установить зависимости для Electron-приложений (OpenLedger Node):
+echo "=== Устанавливаем зависимости для OpenLedger Node ==="
 sudo apt update
 sudo apt install -y \
-  libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 xdg-utils \
-  libatspi2.0-0 libsecret-1-0 libgbm1 libasound2 \
-  unzip screen desktop-file-utils \
-  xvfb
+    libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 xdg-utils \
+    libatspi2.0-0 libsecret-1-0 libgbm1 libasound2 \
+    unzip screen desktop-file-utils
 
-# (Опционально) Можем установить nano, если нужно редактировать конфиги:
-# sudo apt install -y nano
-
-echo "=== [2/8] Создаём Systemd-сервис для Xvfb (:99) ==="
-
-sudo bash -c 'cat > /etc/systemd/system/xvfb.service <<EOF
-[Unit]
-Description=Headless X Server or Xvfb on display :99
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp
-Restart=always
-User=root
-
-[Install]
-WantedBy=multi-user.target
-EOF
-'
-
-echo "=== Перезапускаем демон и включаем автозапуск xvfb.service ==="
-sudo systemctl daemon-reload
-sudo systemctl enable xvfb
-sudo systemctl start xvfb
-
-echo "=== [3/8] Настраиваем .Xauthority и .bashrc для root ==="
-# Создаём файл ~/.Xauthority
-touch /root/.Xauthority
-
-# Прописываем DISPLAY=:99 и XAUTHORITY=/root/.Xauthority в /root/.bashrc, если нет
-BASHRC=/root/.bashrc
-if ! grep -q "DISPLAY=:99" "$BASHRC"; then
-  echo "export DISPLAY=:99" >> "$BASHRC"
-fi
-if ! grep -q "XAUTHORITY=/root/.Xauthority" "$BASHRC"; then
-  echo "export XAUTHORITY=/root/.Xauthority" >> "$BASHRC"
-fi
-
-echo "=== [4/8] Скачиваем архив OpenLedger Node (1.0.0) ==="
+# 2. Скачать и распаковать OpenLedger Node
+echo "=== Скачиваем архив OpenLedger Node (1.0.0) ==="
 wget -O openledger-node-1.0.0-linux.zip \
     https://cdn.openledger.xyz/openledger-node-1.0.0-linux.zip
 
-echo "=== [5/8] Распаковываем архив ==="
+echo "=== Распаковываем архив ==="
 unzip -o openledger-node-1.0.0-linux.zip
 
-echo "=== [6/8] Устанавливаем .deb пакет OpenLedger Node ==="
+# 3. Установить .deb пакет OpenLedger Node
+echo "=== Устанавливаем OpenLedger Node (.deb) ==="
 sudo dpkg -i openledger-node-1.0.0.deb || true
 sudo apt-get install -f -y
 sudo dpkg --configure -a || true
 
-echo "=== [7/8] Завершаем возможную старую screen-сессию openledger_node ==="
-EXISTING_SCREEN=$(screen -ls | grep openledger_node || true)
-if [ -n "$EXISTING_SCREEN" ]; then
-  echo "Найдена старая сессия:"
-  echo "$EXISTING_SCREEN"
-  session_id=$(echo "$EXISTING_SCREEN" | awk '{print $1}' | cut -d. -f1)
-  screen -S "$session_id" -X quit || true
-fi
-
-echo "=== [8/8] Запускаем ноду и входим в screen-сессию openledger_node ==="
-# Запускаем ноду в screen (фоном)
+# 4. Запустить ноду в screen-сессии (detach), затем присоединиться
+echo "=== Запускаем OpenLedger Node в screen-сессии openledger_node ==="
 screen -dmS openledger_node openledger-node --no-sandbox
-# Можно добавить флаги: --disable-gpu --disable-software-rasterizer, если GPU ругается
-# screen -dmS openledger_node openledger-node --no-sandbox --disable-gpu --disable-software-rasterizer
+
+# (Дополнительно можете добавить --disable-gpu, если нужно)
+# screen -dmS openledger_node openledger-node --no-sandbox --disable-gpu
 
 sleep 1
 
-# Автоматически входим в screen
-echo "=== Подключаемся к screen 'openledger_node' (Ctrl+A D для выхода) ==="
+echo "=== Подключаемся к screen-сессии. Для выхода нажмите Ctrl+A D ==="
 screen -r openledger_node
