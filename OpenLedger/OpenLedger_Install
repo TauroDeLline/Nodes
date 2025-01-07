@@ -129,6 +129,41 @@ sudo apt-get install -f -y
 wait_for_apt_lock
 sudo dpkg --configure -a || true
 
+# Предполагаем, что мы уже сделали apt-get update и подождали apt lock, если нужно.
+
+echo "=== Устанавливаем xfce4, xvfb и nano (если не установлены) ==="
+sudo apt-get install -y xfce4 xvfb nano
+
+echo "=== Создаём ~/.Xauthority ==="
+touch ~/.Xauthority
+
+echo "=== Настраиваем /etc/ssh/sshd_config для X11Forwarding ==="
+# Раскомментируем строки, если они есть закомментированные
+sudo sed -i 's/^#\(X11Forwarding\).*/\1 yes/' /etc/ssh/sshd_config
+sudo sed -i 's/^#\(X11DisplayOffset\).*/\1 10/' /etc/ssh/sshd_config
+sudo sed -i 's/^#\(X11UseLocalhost\).*/\1 yes/' /etc/ssh/sshd_config
+
+# Если строк не было (в некоторых дистрах может не быть), убедимся, что в файле есть нужные:
+grep -q '^X11Forwarding' /etc/ssh/sshd_config || echo "X11Forwarding yes" | sudo tee -a /etc/ssh/sshd_config
+grep -q '^X11DisplayOffset' /etc/ssh/sshd_config || echo "X11DisplayOffset 10" | sudo tee -a /etc/ssh/sshd_config
+grep -q '^X11UseLocalhost' /etc/ssh/sshd_config || echo "X11UseLocalhost yes" | sudo tee -a /etc/ssh/sshd_config
+
+echo "=== Перезапускаем sshd ==="
+sudo systemctl restart sshd
+
+# Если хотим сразу запустить Xvfb и выставить DISPLAY:
+echo "=== Запускаем Xvfb :99 в фоновом режиме ==="
+screen -dmS xvfb_screen Xvfb :99 -screen 0 1920x1080x24
+
+echo "=== Экспортируем DISPLAY=:99 ==="
+export DISPLAY=:99
+
+# Теперь любые графические приложения (Electron) в этом же скрипте будут пытаться рендерить на :99
+# Но если вы потом выходите из скрипта/сеанса, переменная DISPLAY пропадёт.
+# Либо можно запускать openledger-node сразу под xvfb-run:
+# xvfb-run -a openledger-node --no-sandbox
+
+
 echo "=== OpenLedger Node установлен. ==="
 
 # ------------------------------------------------------------------------------
