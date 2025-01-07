@@ -1,187 +1,87 @@
 #!/usr/bin/env bash
 #
-# Универсальный скрипт установки OpenLedger Node на Ubuntu (и её производные),
-# который не трогает существующие Docker/контейнеры, ждёт освобождения dpkg lock,
-# и пытается найти подходящую версию libasound2.
-#
-# Предполагается, что вы запускаете скрипт в папке, где будет лежать
-# openledger-node-1.0.0.deb или .zip (мы его скачаем, если нужно).
-#
-# Запускает ноду в screen-сессии openledger_node по завершении.
+# "Полный" скрипт для headless-установки OpenLedger Node (v1.0.0) на Ubuntu,
+# с постоянным Xvfb (виртуальный дисплей), чтобы Electron-приложение работало
+# даже после выхода из SSH. В конце автоматически подключается к screen-сессии.
 
 set -e
 
-# ------------------------------------------------------------------------------
-# 0. Функция ожидания освобождения dpkg/apt lock.
-#    Если запущен другой apt/dpkg, дождёмся завершения, чтобы избежать "Could not get lock".
-# ------------------------------------------------------------------------------
-function wait_for_apt_lock() {
-  echo "=== Проверяем, не заняты ли /var/lib/dpkg/lock-frontend или /var/lib/apt/lists/lock ==="
-  local WAIT_SECONDS=0
-  local MAX_WAIT=120  # максимум 2 минуты ждём
+echo "=== [1/8] Устанавливаем зависимости (включая Xvfb) ==="
+sudo apt update
+sudo apt install -y \
+  libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 xdg-utils \
+  libatspi2.0-0 libsecret-1-0 libgbm1 libasound2 \
+  unzip screen desktop-file-utils \
+  xvfb
 
-  while sudo fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock >/dev/null 2>&1; do
-    if [ $WAIT_SECONDS -gt $MAX_WAIT ]; then
-      echo "Ошибка: apt/dpkg lock не освободился за $MAX_WAIT секунд."
-      echo "Прервём установку, чтобы не рисковать порчей пакетов."
-      exit 1
-    fi
-    echo "Процесс apt/dpkg ещё работает... ждём..."
-    sleep 5
-    ((WAIT_SECONDS+=5))
-  done
-}
+# (Опционально) Можем установить nano, если нужно редактировать конфиги:
+# sudo apt install -y nano
 
-# ------------------------------------------------------------------------------
-# 1. Ждём освобождения apt/dpkg lock
-# ------------------------------------------------------------------------------
-wait_for_apt_lock
+echo "=== [2/8] Создаём Systemd-сервис для Xvfb (:99) ==="
 
-# ------------------------------------------------------------------------------
-# 2. Обновляем список пакетов
-# ------------------------------------------------------------------------------
-echo "=== Обновляем список пакетов ==="
-sudo apt-get update -y
+sudo bash -c 'cat > /etc/systemd/system/xvfb.service <<EOF
+[Unit]
+Description=Headless X Server or Xvfb on display :99
+After=network.target
 
-# ------------------------------------------------------------------------------
-# 3. Устанавливаем базовые зависимости, кроме libasound2 (обработаем отдельно)
-# ------------------------------------------------------------------------------
-echo "=== Устанавливаем базовые зависимости (без libasound2) ==="
-# Сформируем массив: некоторые пакеты иногда переименованы. Пробуем основные названия.
-BASIC_DEPS=(
-  libgtk-3-0
-  libnotify4
-  libnss3
-  libxss1
-  libxtst6
-  xdg-utils
-  libatspi2.0-0
-  libsecret-1-0
-  libgbm1
-  unzip
-  screen
-  desktop-file-utils
-)
+[Service]
+Type=simple
+ExecStart=/usr/bin/Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp
+Restart=always
+User=root
 
-# Попробуем установить базовые зависимости, если не получится — скрипт упадёт на set -e
-sudo apt-get install -y "${BASIC_DEPS[@]}" || true
+[Install]
+WantedBy=multi-user.target
+EOF
+'
 
-# ------------------------------------------------------------------------------
-# 4. Пробуем установить libasound2 или альтернативы
-# ------------------------------------------------------------------------------
-function try_install_asound() {
-  local candidates=( "libasound2" "libasound2t64" "liboss4-salsa-asound2" )
-  local installed_success=false
+echo "=== Перезапускаем демон и включаем автозапуск xvfb.service ==="
+sudo systemctl daemon-reload
+sudo systemctl enable xvfb
+sudo systemctl start xvfb
 
-  for pkg in "${candidates[@]}"; do
-    echo "Пробуем установить пакет '${pkg}'..."
-    if sudo apt-get install -y "$pkg"; then
-      echo "Успешно установили '${pkg}'!"
-      installed_success=true
-      break
-    else
-      echo "Не удалось установить '${pkg}'. Пробуем следующий..."
-    fi
-  done
+echo "=== [3/8] Настраиваем .Xauthority и .bashrc для root ==="
+# Создаём файл ~/.Xauthority
+touch /root/.Xauthority
 
-  if [ "$installed_success" = false ]; then
-    echo "ВНИМАНИЕ: Не удалось найти ни одну из реализаций libasound2!"
-    echo "Скрипт продолжит работу, но Electron-приложения (OpenLedger Node) могут не работать со звуком."
-  fi
-}
-
-echo "=== Пытаемся установить libasound2 (или аналог) ==="
-try_install_asound
-
-# ------------------------------------------------------------------------------
-# 5. Скачиваем (если нет) и устанавливаем OpenLedger Node
-# ------------------------------------------------------------------------------
-OL_DEB="openledger-node-1.0.0.deb"
-OL_ZIP="openledger-node-1.0.0-linux.zip"
-
-# Если нужно скачивать — раскомментируйте. Или если заранее кладёте .deb в папку — уже хорошо.
- if [ ! -f "$OL_ZIP" ] && [ ! -f "$OL_DEB" ]; then
-   echo "=== Скачиваем OpenLedger Node (1.0.0) ==="
-   wget https://cdn.openledger.xyz/openledger-node-1.0.0-linux.zip -O "$OL_ZIP"
- fi
-
-if [ -f "$OL_ZIP" ] && [ ! -f "$OL_DEB" ]; then
-  echo "=== Распаковываем $OL_ZIP ==="
-  unzip -o "$OL_ZIP"
+# Прописываем DISPLAY=:99 и XAUTHORITY=/root/.Xauthority в /root/.bashrc, если нет
+BASHRC=/root/.bashrc
+if ! grep -q "DISPLAY=:99" "$BASHRC"; then
+  echo "export DISPLAY=:99" >> "$BASHRC"
+fi
+if ! grep -q "XAUTHORITY=/root/.Xauthority" "$BASHRC"; then
+  echo "export XAUTHORITY=/root/.Xauthority" >> "$BASHRC"
 fi
 
-# Теперь в папке должен появиться openledger-node-1.0.0.deb
-if [ ! -f "$OL_DEB" ]; then
-  echo "ОШИБКА: Не найден $OL_DEB (openledger-node-1.0.0.deb)."
-  echo "Положите .deb или .zip в текущую папку, либо раскомментируйте скачивание."
-  exit 1
-fi
+echo "=== [4/8] Скачиваем архив OpenLedger Node (1.0.0) ==="
+wget -O openledger-node-1.0.0-linux.zip \
+    https://cdn.openledger.xyz/openledger-node-1.0.0-linux.zip
 
-echo "=== Устанавливаем пакет $OL_DEB ==="
-wait_for_apt_lock
-sudo dpkg -i "$OL_DEB" || true
+echo "=== [5/8] Распаковываем архив ==="
+unzip -o openledger-node-1.0.0-linux.zip
 
-# Если есть мелкие несостыковки зависимостей:
-wait_for_apt_lock
+echo "=== [6/8] Устанавливаем .deb пакет OpenLedger Node ==="
+sudo dpkg -i openledger-node-1.0.0.deb || true
 sudo apt-get install -f -y
-
-# На всякий случай ещё раз:
-wait_for_apt_lock
 sudo dpkg --configure -a || true
 
-# Предполагаем, что мы уже сделали apt-get update и подождали apt lock, если нужно.
-
-echo "=== Устанавливаем xfce4, xvfb и nano (если не установлены) ==="
-sudo apt-get install -y xfce4 xvfb nano
-
-echo "=== Создаём ~/.Xauthority ==="
-touch ~/.Xauthority
-
-echo "=== Настраиваем /etc/ssh/sshd_config для X11Forwarding ==="
-# Раскомментируем строки, если они есть закомментированные
-sudo sed -i 's/^#\(X11Forwarding\).*/\1 yes/' /etc/ssh/sshd_config
-sudo sed -i 's/^#\(X11DisplayOffset\).*/\1 10/' /etc/ssh/sshd_config
-sudo sed -i 's/^#\(X11UseLocalhost\).*/\1 yes/' /etc/ssh/sshd_config
-
-# Если строк не было (в некоторых дистрах может не быть), убедимся, что в файле есть нужные:
-grep -q '^X11Forwarding' /etc/ssh/sshd_config || echo "X11Forwarding yes" | sudo tee -a /etc/ssh/sshd_config
-grep -q '^X11DisplayOffset' /etc/ssh/sshd_config || echo "X11DisplayOffset 10" | sudo tee -a /etc/ssh/sshd_config
-grep -q '^X11UseLocalhost' /etc/ssh/sshd_config || echo "X11UseLocalhost yes" | sudo tee -a /etc/ssh/sshd_config
-
-echo "=== Перезапускаем sshd ==="
-sudo systemctl restart sshd
-
-# Если хотим сразу запустить Xvfb и выставить DISPLAY:
-echo "=== Запускаем Xvfb :99 в фоновом режиме ==="
-screen -dmS xvfb_screen Xvfb :99 -screen 0 1920x1080x24
-
-echo "=== Экспортируем DISPLAY=:99 ==="
-export DISPLAY=:99
-
-# Теперь любые графические приложения (Electron) в этом же скрипте будут пытаться рендерить на :99
-# Но если вы потом выходите из скрипта/сеанса, переменная DISPLAY пропадёт.
-# Либо можно запускать openledger-node сразу под xvfb-run:
-# xvfb-run -a openledger-node --no-sandbox
-
-
-echo "=== OpenLedger Node установлен. ==="
-
-# ------------------------------------------------------------------------------
-# 6. Запускаем ноду в screen-сессии
-# ------------------------------------------------------------------------------
-# Сначала проверим, не висит ли старая сессия openledger_node
+echo "=== [7/8] Завершаем возможную старую screen-сессию openledger_node ==="
 EXISTING_SCREEN=$(screen -ls | grep openledger_node || true)
 if [ -n "$EXISTING_SCREEN" ]; then
-  echo "Старую сессию openledger_node убьём..."
+  echo "Найдена старая сессия:"
+  echo "$EXISTING_SCREEN"
   session_id=$(echo "$EXISTING_SCREEN" | awk '{print $1}' | cut -d. -f1)
   screen -S "$session_id" -X quit || true
 fi
 
-echo "=== Запускаем ноду в screen-сессии openledger_node ==="
+echo "=== [8/8] Запускаем ноду и входим в screen-сессию openledger_node ==="
+# Запускаем ноду в screen (фоном)
 screen -dmS openledger_node openledger-node --no-sandbox
+# Можно добавить флаги: --disable-gpu --disable-software-rasterizer, если GPU ругается
+# screen -dmS openledger_node openledger-node --no-sandbox --disable-gpu --disable-software-rasterizer
 
-# Если хотите сразу "войти" в эту сессию:
+sleep 1
+
+# Автоматически входим в screen
+echo "=== Подключаемся к screen 'openledger_node' (Ctrl+A D для выхода) ==="
 screen -r openledger_node
-
-echo "=== Скрипт завершён. Нода запущена в background-сессии screen openledger_node ==="
-echo "Чтобы подключиться: screen -r openledger_node"
