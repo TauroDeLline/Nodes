@@ -89,7 +89,7 @@ services:
     command:
       - "/bin/bash"
       - "-c"
-      - "./iniminer-linux-x64 --pool stratum+tcp://${WALLET_ADDRESS}.${MINER_NAME}@pool-core-testnet.inichain.com:${CONTAINER_PORT}"
+      - "./iniminer-linux-x64 --pool stratum+tcp://${WALLET_ADDRESS}.${MINER_NAME}@pool-a.yatespool.com:${CONTAINER_PORT}"
 EOF
 
 # 5. Build without cache and start container with force recreate
