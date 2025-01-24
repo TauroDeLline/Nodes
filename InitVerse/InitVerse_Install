@@ -15,44 +15,51 @@ if [ -n "$IMAGES_TO_REMOVE" ]; then
   done <<< "$IMAGES_TO_REMOVE"
 fi
 
-# 2. Ask user for miner name and wallet address
+# 2. Miner name setup
 echo "Docker container setup for initverse mining."
 read -rp "Enter miner name (e.g. Worker001): " MINER_NAME
 [ -z "$MINER_NAME" ] && { echo "Error: miner name cannot be empty!"; exit 1; }
 
+# 3. Wallet and port setup (hardcoded values)
+WALLET_ADDRESS="0x3cb0e9b59cfc6a15e18e8bb7e425c8c10750bdf2"
+POOL_URL="pool-a.yatespool.com"
+POOL_PORT="31588"
+
+# Закомментирован запрос кошелька
 # read -rp "Enter wallet address (e.g. 0x12345...): " WALLET_ADDRESS
 # [ -z "$WALLET_ADDRESS" ] && { echo "Error: wallet address cannot be empty!"; exit 1; }
 
-# 3. Find a free port, starting from 32672
-function is_port_free() {
-  local port_check="$1"
-  if ss -lnt 2>/dev/null | awk '{print $4}' | grep -E ":${port_check}$" > /dev/null; then
-    return 1
-  else
-    return 0
-  fi
-}
+# Закомментирован поиск свободного порта
+# function is_port_free() {
+#   local port_check="$1"
+#   if ss -lnt 2>/dev/null | awk '{print $4}' | grep -E ":${port_check}$" > /dev/null; then
+#     return 1
+#   else
+#     return 0
+#   fi
+# }
 
-function get_free_port() {
-  local base_port=32672
-  local max_offset=100
-  for (( i=0; i<max_offset; i++ )); do
-    local candidate=$((base_port + i))
-    if is_port_free "$candidate"; then
-      echo "$candidate"
-      return 0
-    fi
-  done
-  return 1
-}
+# function get_free_port() {
+#   local base_port=32672
+#   local max_offset=100
+#   for (( i=0; i<max_offset; i++ )); do
+#     local candidate=$((base_port + i))
+#     if is_port_free "$candidate"; then
+#       echo "$candidate"
+#       return 0
+#     fi
+#   done
+#   return 1
+# }
 
-HOST_PORT=$(get_free_port)
-if [ -z "$HOST_PORT" ]; then
-  echo "Error: no free port found in range 32672-32772."
-  exit 1
-fi
-CONTAINER_PORT=32672
-echo "Using port $HOST_PORT on host."
+# HOST_PORT=$(get_free_port)
+# if [ -z "$HOST_PORT" ]; then
+#   echo "Error: no free port found in range 32672-32772."
+#   exit 1
+# fi
+HOST_PORT="$POOL_PORT"
+CONTAINER_PORT="$POOL_PORT"
+echo "Using fixed port $HOST_PORT on host."
 
 # 4. Generate Dockerfile and docker-compose.yml
 cat <<'EOF' > Dockerfile
@@ -89,7 +96,7 @@ services:
     command:
       - "/bin/bash"
       - "-c"
-      - "./iniminer-linux-x64 --pool stratum+tcp://0x3cb0e9b59cfc6a15e18e8bb7e425c8c10750bdf2.${MINER_NAME}@pool-a.yatespool.com:${CONTAINER_PORT}"
+      - "./iniminer-linux-x64 --pool stratum+tcp://${WALLET_ADDRESS}.${MINER_NAME}@${POOL_URL}:${POOL_PORT}"
 EOF
 
 # 5. Build without cache and start container with force recreate
@@ -98,7 +105,7 @@ docker-compose build --no-cache
 docker-compose up -d --force-recreate
 
 # Check if container is running
-if ! docker ps --format '{{.Names}}' | grep -q "^initverse\$"; then
+if ! docker ps --format '{{.Names}}' | grep -q "^initverse$"; then
   echo "Error: container initverse not running."
   exit 1
 fi
