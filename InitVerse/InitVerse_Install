@@ -17,8 +17,8 @@ fi
 
 # 2. Ask user for miner name and wallet address
 echo "Docker container setup for initverse mining."
-# read -rp "Enter miner name (e.g. Worker001): " MINER_NAME
-# [ -z "$MINER_NAME" ] && { echo "Error: miner name cannot be empty!"; exit 1; }
+read -rp "Enter miner name (e.g. Worker001): " MINER_NAME
+[ -z "$MINER_NAME" ] && { echo "Error: miner name cannot be empty!"; exit 1; }
 
 # read -rp "Enter wallet address (e.g. 0x12345...): " WALLET_ADDRESS
 # [ -z "$WALLET_ADDRESS" ] && { echo "Error: wallet address cannot be empty!"; exit 1; }
