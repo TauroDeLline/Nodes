@@ -1,21 +1,36 @@
 #!/bin/bash
 set -e
 
-# Обновляем список пакетов и устанавливаем зависимости
+echo "Обновляем список пакетов и устанавливаем зависимости..."
 sudo apt update && sudo apt install -y build-essential pkg-config libssl-dev protobuf-compiler
 
-# Устанавливаем Rust с автоматическим подтверждением стандартных опций
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-. "$HOME/.cargo/env"
+echo "Создаём обёртку для protoc, чтобы передавался флаг --experimental_allow_proto3_optional..."
+mkdir -p ~/bin
+cat << 'EOF' > ~/bin/protoc
+#!/bin/bash
+exec /usr/bin/protoc --experimental_allow_proto3_optional "$@"
+EOF
+chmod +x ~/bin/protoc
+export PATH=~/bin:$PATH
 
-# Добавляем целевой триплет riscv32i
+echo "Проверяем, установлен ли Rust..."
+if ! command -v rustup >/dev/null 2>&1; then
+    echo "Rust не найден, устанавливаем..."
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    . "$HOME/.cargo/env"
+else
+    echo "Rust уже установлен."
+    . "$HOME/.cargo/env"
+fi
+
+echo "Добавляем целевой триплет riscv32i-unknown-none-elf..."
 rustup target add riscv32i-unknown-none-elf
 
-# Устанавливаем Nexus CLI, автоматически подтверждая условия использования
+echo "Устанавливаем Nexus CLI (авто-подтверждение условий использования)..."
 echo y | curl https://cli.nexus.xyz/ | sh
 
-# Запускаем ноду в новой screen-сессии с именем "nexus"
-# Команда внутри screen запускает ноду и оставляет сессию открытой
+echo "Запускаем ноду в screen-сессии 'nexus'..."
+# Создаём фоновую screen-сессию с запуском ноды.
 screen -S nexus -dm bash -c "/root/.nexus/network-api/clients/cli/target/release/nexus-network run; exec bash"
-# Подключаемся к сессии, чтобы оставаться в ней
+# Подключаемся к сессии, чтобы оставаться в ней.
 screen -r nexus
