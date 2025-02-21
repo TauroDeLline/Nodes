@@ -1,77 +1,21 @@
-#!/usr/bin/env bash
-
+#!/bin/bash
 set -e
 
-# Цвета для вывода
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-NC='\033[0m'
+# Обновляем список пакетов и устанавливаем зависимости
+sudo apt update && sudo apt install -y build-essential pkg-config libssl-dev protobuf-compiler
 
-echo -e "${GREEN}Введите ваш Prover ID:${NC}"
-read PROVER_ID
+# Устанавливаем Rust с автоматическим подтверждением стандартных опций
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+. "$HOME/.cargo/env"
 
-if [ -z "$PROVER_ID" ]; then
-  echo -e "${RED}Prover ID не может быть пустым!${NC}"
-  exit 1
-fi
+# Добавляем целевой триплет riscv32i
+rustup target add riscv32i-unknown-none-elf
 
-echo -e "${GREEN}Собираем образ для ноды Nexus...${NC}"
-mkdir -p /tmp/nexusnode
-cat <<EOF >/tmp/nexusnode/Dockerfile
-FROM base-image:latest
+# Устанавливаем Nexus CLI, автоматически подтверждая условия использования
+echo y | curl https://cli.nexus.xyz/ | sh
 
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Устанавливаем необходимые зависимости для сборки
-RUN apt-get update && apt-get install -y build-essential pkg-config libssl-dev git-all protobuf-compiler curl && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Устанавливаем Rust и Cargo
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
-    /root/.cargo/bin/rustup update
-
-ENV PATH="/root/.cargo/bin:\$PATH"
-
-WORKDIR /app
-
-# Подготовим файл лога
-RUN touch /app/nexus.log
-
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
-
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-EOF
-
-cat <<'EOF' >/tmp/nexusnode/entrypoint.sh
-#!/usr/bin/env bash
-set -e
-
-if [ -z "$PROVER_ID" ]; then
-  echo "Prover ID not provided!"
-  exit 1
-fi
-
-mkdir -p /root/.nexus
-echo "$PROVER_ID" > /root/.nexus/prover-id
-
-echo "Using Prover ID: $PROVER_ID"
-
-# Запускаем ноду, выводим всё в лог
-(echo "y" | curl https://cli.nexus.xyz/ | sh > /app/nexus.log 2>&1) &
-
-# Показываем лог в реальном времени
-exec tail -f /app/nexus.log
-EOF
-
-sudo docker build -t nexus-image:latest /tmp/nexusnode
-rm -rf /tmp/nexusnode
-
-echo -e "${GREEN}Образ nexus-image:latest собран успешно!${NC}"
-
-echo -e "${GREEN}Запускаем контейнер Nexus...${NC}"
-sudo docker run -d --name Nexus --restart always -e PROVER_ID="$PROVER_ID" nexus-image:latest
-
-echo -e "${GREEN}Контейнер Nexus запущен!${NC}"
-echo -e "${YELLOW}Сейчас будут показаны логи ноды (уникально, без дубликатов). Нажмите Ctrl+C, чтобы выйти из просмотра логов. Нода продолжит работать.${NC}"
-sudo docker logs -f Nexus
+# Запускаем ноду в новой screen-сессии с именем "nexus"
+# Команда внутри screen запускает ноду и оставляет сессию открытой
+screen -S nexus -dm bash -c "/root/.nexus/network-api/clients/cli/target/release/nexus-network run; exec bash"
+# Подключаемся к сессии, чтобы оставаться в ней
+screen -r nexus
