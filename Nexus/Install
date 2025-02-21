@@ -27,10 +27,7 @@ echo "Добавляем целевой триплет riscv32i-unknown-none-elf
 rustup target add riscv32i-unknown-none-elf
 
 echo "Устанавливаем Nexus CLI (авто-подтверждение условий использования)..."
-echo y | curl https://cli.nexus.xyz/ | sh
+screen -dmS nexus bash -c "curl https://cli.nexus.xyz/ | sh"
 
-echo "Запускаем ноду в screen-сессии 'nexus'..."
-# Создаём фоновую screen-сессию с запуском ноды.
-screen -S nexus -dm bash -c "/root/.nexus/network-api/clients/cli/target/release/nexus-network run; exec bash"
 # Подключаемся к сессии, чтобы оставаться в ней.
 screen -r nexus
