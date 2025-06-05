@@ -1,3 +1,11 @@
+
+# Запуск в третьей фаза, только Кусик
+
+``` bash
+wget --no-cache -q https://raw.githubusercontent.com/TauroDeLline/Nodes/main/Cysic/Cysic_Install_3 && chmod +x Cysic_Install_3 && ./Cysic_Install_3
+```
+
+
 ## Быстрый запуск
 
 ``` bash
