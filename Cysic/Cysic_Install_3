@@ -2,44 +2,43 @@
 #
 # install_cysic_node.sh
 #
-# Скрипт для развёртывания «cysic-verifier» ноды на Ubuntu 22 (от root).
-# Адрес кошелька прописан жёстко внутри скрипта.
+# Скрипт для развёртывания «cysic-verifier» ноды на Ubuntu 22 (от root),
+# с использованием строго заданных команд:
+#   1) curl -L … > ~/setup_linux.sh && bash ~/setup_linux.sh <адрес>
+#   2) cd ~/cysic-verifier/ && bash start.sh
+#
+# Адрес кошелька прописан жёстко внутри скрипта. Никаких изменений в этих командах!
 # Usage: ./install_cysic_node.sh
 #
 
 set -euo pipefail
 
-### 1) Переменные
+### Параметры (жёстко прописанный адрес кошелька)
 WALLET_ADDR="0xc80be27Ab3565C5354247Ff1953E1e89faDA1336"
-SETUP_URL="https://github.com/cysic-labs/cysic-phase3/releases/download/v1.0.0/setup_linux.sh"
-SETUP_PATH="/root/setup_linux.sh"
+
+### Пути
 SERVICE_NAME="cysic-verifier"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-NODE_DIR="/root/cysic-verifier"
 LOG_FILE="/var/log/${SERVICE_NAME}.log"
 
-### 2) Шаг 1: Скачиваем setup_linux.sh и делаем его исполняемым
-echo ">>> Скачиваем и готовим setup_linux.sh..."
-mkdir -p /root
-curl -L "${SETUP_URL}" -o "${SETUP_PATH}"
-chmod +x "${SETUP_PATH}"
+### 1) Шаг 1: Запускаем установку ноды «как есть»
+echo ">>> Скачиваем и запускаем setup_linux.sh (ровно так, как указано)..."
+# Эта строка — точь-в-точь ваша первая команда. Домашний каталог — /root, так как мы работаем от root.
+curl -L https://github.com/cysic-labs/cysic-phase3/releases/download/v1.0.0/setup_linux.sh > ~/setup_linux.sh && \
+  bash ~/setup_linux.sh "${WALLET_ADDR}"
 
-### 3) Шаг 2: Запускаем установку ноды
-echo ">>> Запускаем установку ноды: bash ${SETUP_PATH} ${WALLET_ADDR} ..."
-bash "${SETUP_PATH}" "${WALLET_ADDR}"
-# После этого в /root должна появиться папка cysic-verifier с start.sh внутри.
-
-if [ ! -d "${NODE_DIR}" ] || [ ! -x "${NODE_DIR}/start.sh" ]; then
-  echo "Ошибка: не удалось найти ${NODE_DIR}/start.sh после запуска setup_linux.sh"
+### 2) Проверяем, что папка ~/cysic-verifier со скриптом появилась
+if [ ! -d "/root/cysic-verifier" ] || [ ! -f "/root/cysic-verifier/start.sh" ]; then
+  echo "Ошибка: папка /root/cysic-verifier или файл start.sh не найдены после setup."
   exit 1
 fi
 
-### 4) Шаг 3: Создаём файл лога и настраиваем права
-echo ">>> Настраиваем лог-файл ${LOG_FILE}..."
+### 3) Шаг 2: Настраиваем лог-файл
+echo ">>> Создаём и настраиваем лог-файл ${LOG_FILE}..."
 touch "${LOG_FILE}"
 chmod 644 "${LOG_FILE}"
 
-### 5) Шаг 4: Формируем systemd unit-файл
+### 4) Шаг 3: Формируем unit-файл для systemd
 echo ">>> Пишем unit-файл в ${SERVICE_FILE}..."
 cat > "${SERVICE_FILE}" <<EOF
 [Unit]
@@ -47,13 +46,21 @@ Description=Cysic Verifier Node Service
 After=network.target
 
 [Service]
-# Запуск от root
-WorkingDirectory=${NODE_DIR}
-ExecStart=/bin/bash ${NODE_DIR}/start.sh
+# Явно задаём HOME=/root, чтобы ~ внутри ExecStart работал корректно
+Environment=HOME=/root
+
+# Рабочая директория необязательна, так как мы используем «cd ~/cysic-verifier» в ExecStart
+# но явно укажем для однозначности:
+WorkingDirectory=/root
+
+# Точнейшая дословная команда (не меняем «cd ~/cysic-verifier/ && bash start.sh»)
+ExecStart=/bin/bash -c "cd ~/cysic-verifier/ && bash start.sh"
+
+# Автоматически перезапускаем при ошибке
 Restart=on-failure
 RestartSec=5s
 
-# Перенаправляем stdout/stderr в лог-файл
+# Перенаправляем вывод в единый лог
 StandardOutput=append:${LOG_FILE}
 StandardError=append:${LOG_FILE}
 
@@ -61,13 +68,13 @@ StandardError=append:${LOG_FILE}
 WantedBy=multi-user.target
 EOF
 
-### 6) Шаг 5: Перезагружаем конфигурацию systemd, включаем автозапуск и стартуем сервис
-echo ">>> Перезагружаем systemd, включаем и запускаем сервис..."
+### 5) Шаг 4: Перезагружаем systemd, включаем автозапуск и стартуем сервис
+echo ">>> Перезагружаем конфигурацию systemd, включаем и запускаем сервис..."
 systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}.service"
 systemctl start  "${SERVICE_NAME}.service"
 
-### 7) Шаг 6: Проверяем, что сервис запущен
+### 6) Шаг 5: Проверяем, что сервис запущен
 sleep 1
 if systemctl is-active --quiet "${SERVICE_NAME}.service"; then
   echo "✔ Сервис ${SERVICE_NAME} успешно запущен и работает в фоне."
